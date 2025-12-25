@@ -2,6 +2,11 @@ name: Manual Build
 
 on:
   workflow_dispatch:
+    inputs:
+      target_branch:
+        description: "Branch to build"
+        required: true
+        default: "master"
 
 jobs:
   build-windows:
@@ -9,6 +14,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.target_branch }}
 
     - name: mkdir
       run: mkdir ci_windows
@@ -54,6 +61,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.target_branch }}
 
     - name: mkdir
       run: mkdir ci_ubuntu
@@ -109,6 +118,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.target_branch }}
 
     - name: mkdir
       run: mkdir ci_macos
@@ -149,4 +160,3 @@ jobs:
       with:
         name: macos-binary
         path: ./ci_macos/macos_binary_latest.zip
-        

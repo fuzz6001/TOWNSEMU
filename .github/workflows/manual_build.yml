@@ -31,7 +31,7 @@ jobs:
       working-directory: ./gui
 
     - name: checkout_gui
-      run: git clone https://github.com/captainys/public.git
+      run: git clone --depth 1 https://github.com/captainys/public.git
       working-directory: ./gui/src
 
     - name: build_gui
@@ -88,7 +88,7 @@ jobs:
       working-directory: ./gui
 
     - name: checkout_gui
-      run: git clone https://github.com/captainys/public.git
+      run: git clone --depth 1 https://github.com/captainys/public.git
       working-directory: ./gui/src
 
     - name: build_gui
@@ -137,7 +137,7 @@ jobs:
       working-directory: ./gui
 
     - name: checkout_gui
-      run: git clone https://github.com/captainys/public.git
+      run: git clone --depth 1 https://github.com/captainys/public.git
       working-directory: ./gui/src
 
     - name: build_gui

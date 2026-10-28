@@ -44,6 +44,8 @@ void TownsARGV::PrintHelp(void) const
 	std::cout << "  Maximize the window on start up" << std::endl;
 	std::cout << "-FULLSCREEN" << std::endl;
 	std::cout << "  Fullscreen on start up" << std::endl;
+	std::cout << "-WINSIZE wid hei" << std::endl;
+	std::cout << "  Specify window size." << std::endl;
 	std::cout << "-HIGHRES" << std::endl;
 	std::cout << "  Enable High-Resolution CRTC (default)" << std::endl;
 	std::cout << "-NOHIGHRES" << std::endl;
@@ -154,6 +156,8 @@ void TownsARGV::PrintHelp(void) const
 	std::cout << "  Repeat -CDPATH path1 -CDPATH path2 ... to specify multipl paths." << std::endl;
 	std::cout << "-CDSPEED N" << std::endl;
 	std::cout << "  Set CD speed.  CD speed will be set to Nx." << std::endl;
+	std::cout << " -NOINTCD\n";
+	std::cout << "  Virtually remove internal CD drive (Keep ready signal on I/O 4C0h zero.)\n";
 	std::cout << "-ICM image-file-name" << std::endl;
 	std::cout << "  IC Memory Card image file name." << std::endl;
 	std::cout << "-JEIDA4 image-file-name" << std::endl;
@@ -164,6 +168,8 @@ void TownsARGV::PrintHelp(void) const
 	std::cout << "-ICMUP" << std::endl;
 	std::cout << "-JEIDA4UP" << std::endl;
 	std::cout << "  Write un-protect memory card." << std::endl;
+	std::cout << "-COMn\n";
+	std::cout << "  Enable COMn.  COM0 is enabled by default. 1<=n<=4\n";
 	std::cout << "-GAMEPORT0 KEY|PHYSx|ANAx|NONE" << std::endl;
 	std::cout << "-GAMEPORT1 KEY|PHYSx|ANAx|NONE" << std::endl;
 	std::cout << "  Specify game-port emulation.  By keyboard (Arrow,Z,X,A,S), or physical gamepad." << std::endl;
@@ -276,6 +282,25 @@ void TownsARGV::PrintHelp(void) const
 	std::cout << "    MODEL2 2F 20F UX CX UG HG HR UR MA MX ME MF HC" << std::endl;
 	std::cout << "  It affects the return value from I/O 0030H." << std::endl;
 	std::cout << "  Also selection of UX and UG (386SX models) will affect memory mappings." << std::endl;
+	std::cout << "-BOOTKEY key_combination\n";
+	std::cout << "  Emulate boot-key combination.\n";
+	std::cout << "    CD    Boot from Internal CD (C+D keys)\n";
+	std::cout << "    F0    Boot from Floppy Disk Drive 0 (F+0 keys)\n";
+	std::cout << "    F1    Boot from Floppy Disk Drive 1 (F+1 keys)\n";
+	std::cout << "    F2    Boot from Floppy Disk Drive 2 (F+2 keys)\n";
+	std::cout << "    F3    Boot from Floppy Disk Drive 3 (F+3 keys)\n";
+	std::cout << "    H0    Boot from SCSI ID 0 (H+0 keys)\n";
+	std::cout << "    H1    Boot from SCSI ID 1 (H+1 keys)\n";
+	std::cout << "    H2    Boot from SCSI ID 2 (H+2 keys)\n";
+	std::cout << "    H3    Boot from SCSI ID 3 (H+3 keys)\n";
+	std::cout << "    H4    Boot from SCSI ID 4 (H+4 keys)\n";
+	std::cout << "    ICM   Boot from IC Memory Card (I+C+M keys)\n";
+	std::cout << "    DEBUG Boot into debug menu (D+E+B+U+G keys)\n";
+	std::cout << "    PADA  Boot from Internal CD (TownsPAD A button)\n";
+	std::cout << "    PADB  Boot from Floopy Disk Drive 0 (TownsPAD B button)\n";
+	std::cout << "    PADAB Select Temporary Boot Device (TownsPAD A+B buttons)\n";
+	std::cout << "    FAST  Boot in the FAST mode (T key)\n";
+	std::cout << "    SLOW  Boot in the SLOW mode (N key)\n";
 	std::cout << "-FORCEQUITONPOFF" << std::endl;
 	std::cout << "  Use exit(0) to exit the program on power off." << std::endl;
 	std::cout << "-LOADSTATE stateFName.TState" << std::endl;
@@ -301,6 +326,28 @@ void TownsARGV::PrintHelp(void) const
 	std::cout << "  !!CAUTION!! TRANSMISSION IS NOT ENCRYPTED!!!!\n" << std::endl;
 	std::cout << "  !!CAUTION!! DO NOT SEND SENSITIVE AND/OR PERSONAL INFORMATION OVER TCP/IP FORWARDING!!!!\n" << std::endl;
 	std::cout << "  !!CAUTION!! I WILL NOT TAKE RESPONSIBILITY FOR ANY DAMAGE CAUSED BY COMPROMISED INFORMATION!!!!" << std::endl;
+
+	std::cout << "-VMFLAG flag\n";
+	std::cout << "  Set VMFlags.  Flag can be:\n";
+	std::cout << "    CONSOUT: Free TOWNS OS (Tsugaru OS)'s IO.SYS checks this flag, and send console\n";
+	std::cout << "    output to host terminal if set.\n";
+	std::cout << "-CONSCMD command\n";
+	std::cout << "  Add a command to run in Free TOWNS OS (Tsugaru OS).\n";
+	std::cout << "  The command will be executed when YAMAND.COM is ready to accept a command.\n";
+
+	std::cout << "-REX3586\n";
+	std::cout << "  Enable NAT for Ratoc REX3586 LAN card.  By default the LAN is disabled.\n";
+	std::cout << "-NOREX3586\n";
+	std::cout << "  Disable NAT for Ratoc REX3586 LAN card enabled by earlier argument.\n";
+	std::cout << "-PORTFWD VMPort HostPort\n";
+	std::cout << "  Enable Port Forwarding VMPort is the port Tsugaru sees.\n";
+	std::cout << "  And HostPort is the port open to outside.\n";
+	std::cout << "  You may also have to open port in the Firewall of the host OS.\n";
+
+	std::cout << "-FMT3631\n";
+	std::cout << "  Enable FMT-3631 Windows Accelerator Card.\n";
+	std::cout << "-NOFMT3631\n";
+	std::cout << "  Disable FMT-3631 Windows Accelerator Card.\n";
 
 	std::cout << "-VERBOSE\n";
 	std::cout << "  Additional console output.\n";
@@ -465,6 +512,13 @@ bool TownsARGV::AnalyzeCommandParameter(int argc,char *argv[])
 		{
 			windowModeOnStartUp=WINDOW_FULLSCREEN;
 		}
+		else if("-WINSIZE"==ARG && i+2<argc)
+		{
+			windowModeOnStartUp=WINDOW_SPECIFY_SIZE;
+			windowSize[0]=std::max(16,cpputil::Atoi(argv[i+1]));
+			windowSize[1]=std::max(16,cpputil::Atoi(argv[i+2]));
+			i+=2;
+		}
 		else if("-PAUSE"==ARG)
 		{
 			autoStart=false;
@@ -528,6 +582,21 @@ bool TownsARGV::AnalyzeCommandParameter(int argc,char *argv[])
 				{
 					powerOffAtPassCount=cpputil::Atoi(powerOffAt.c_str()+j+1);
 					powerOffAt.resize(j);
+					break;
+				}
+			}
+			++i;
+		}
+		else if("-POWEROFFONIOW"==ARG && i+1<argc)
+		{
+			powerOffOnIOW=true;
+			powerOffOnIOWPort=cpputil::Xtoi(argv[i+1]);
+			powerOffOnIOWValue=~0;
+			for(size_t j=0; 0!=argv[i+1][j]; ++j)
+			{
+				if('@'==argv[i+1][j])
+				{
+					powerOffOnIOWValue=cpputil::Xtoi(argv[i+1]+j+1);
 					break;
 				}
 			}
@@ -689,7 +758,7 @@ bool TownsARGV::AnalyzeCommandParameter(int argc,char *argv[])
 			fileNameAlias[LABEL]=argv[i+2];
 			i+=2;
 		}
-		else if("-SPCIALPATH"==ARG && i+2<argc)
+		else if("-SPECIALPATH"==ARG && i+2<argc)
 		{
 			std::pair <std::string,std::string> pair;
 			pair.first=argv[i+1];
@@ -706,6 +775,10 @@ bool TownsARGV::AnalyzeCommandParameter(int argc,char *argv[])
 		{
 			cdSpeed=cpputil::Atoi(argv[i+1]);
 			++i;
+		}
+		else if("-NOINTCD"==ARG)
+		{
+			removeInternalCD=true;
 		}
 		else if("-CD"==ARG && i+1<argc)
 		{
@@ -1087,6 +1160,26 @@ bool TownsARGV::AnalyzeCommandParameter(int argc,char *argv[])
 			customMouseY=argv[i+1];
 			++i;
 		}
+		else if("-COM0"==ARG)
+		{
+			// Do nothing.
+		}
+		else if("-COM1"==ARG)
+		{
+			COMPortEnabled[1]=true;
+		}
+		else if("-COM2"==ARG)
+		{
+			COMPortEnabled[2]=true;
+		}
+		else if("-COM3"==ARG)
+		{
+			COMPortEnabled[3]=true;
+		}
+		else if("-COM4"==ARG)
+		{
+			COMPortEnabled[4]=true;
+		}
 		else if("-MOSCAPTIME"==ARG && i+1<argc)
 		{
 			customMouseCaptureTiming=TownsStrToCustomMouseCaptureTiming(argv[i+1]);
@@ -1104,6 +1197,71 @@ bool TownsARGV::AnalyzeCommandParameter(int argc,char *argv[])
 		else if("-NODIFFMOUSE"==ARG)
 		{
 			differentialMouseIntegration=false;
+		}
+		else if("-VMFLAG"==ARG && i+1<argc)
+		{
+			std::string flagStr=argv[i+1];
+			cpputil::Capitalize(flagStr);
+			if("CONSOUT"==flagStr)
+			{
+				VMFlags|=TOWNS_VMFLAGS_CONSOLE;
+			}
+			else
+			{
+				std::cout << "Undefined VMFlag " << argv[i+1] <<"\n";
+				std::cout << "  Acceptable flags are:\n";
+				std::cout << "    CONSOUT\n";
+				return false;
+			}
+			++i;
+		}
+		else if("-REX3586"==ARG)
+		{
+			enableLAN=true;
+			std::cout << "!!! CAUTION !!!\n";
+			std::cout << "Any operating systems run on FM TOWNS does not have the security features that meet\n";
+			std::cout << "today's standard.  Any network transaction can be stolen by anyone monitoring the\n";
+			std::cout << "packets.\n";
+			std::cout << "ABSOLUTELY DO NOT TRANSMIT SENSITIVE INFORMATION over the network.\n";
+			std::cout << "It is highly recommended to turn off TGDRV when using LAN feature of Tsugaru.\n";
+			std::cout << "LAN is highly experimental at this point.  LAN status is not state-saved.\n";
+		}
+		else if("-NOREX3586"==ARG)
+		{
+			enableLAN=false;
+		}
+		else if("-FMT3631"==ARG)
+		{
+			fmt3631=true;
+			fmt3632=false;
+		}
+		else if("-NOFMT3631"==ARG)
+		{
+			fmt3631=false;
+		}
+		else if("-FMT3632"==ARG)
+		{
+			fmt3631=false;
+			fmt3632=true;
+		}
+		else if("-NOFMT3632"==ARG)
+		{
+			fmt3632=false;
+		}
+		else if("-PORTFWD"==ARG && i+2<argc)
+		{
+			std::pair <uint16_t,uint16_t> fwd;
+			fwd.first=cpputil::Atoi(argv[i+1]);
+			fwd.second=cpputil::Atoi(argv[i+2]);
+			portForwarding.push_back(fwd);
+			i+=2;
+		}
+		else if("-CONSCMD"==ARG && i+1<argc)
+		{
+			std::string cmd=argv[i+1];
+			cmd.push_back(0x0D);
+			consoleCmd.push_back(cmd);
+			++i;
 		}
 		else
 		{

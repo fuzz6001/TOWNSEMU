@@ -62,9 +62,10 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 		break;
 
 	case TOWNS_QUICK_DEBUG_BREAK: //        0xEA,  // Writing to this I/O port will break the VM.
-		debugger.ExternalBreak("Break Request from VM");
+		debugger.ExternalBreak("Break Request from VM (0x"+cpputil::Ubtox(data)+")");
 		break;
 	case TOWNS_QUICK_DEBUG_STATE: //        0xEB,  // Writing to this I/O port will show the VM state, not break.
+		std::cout << "Status Request from VM (0x"+cpputil::Ubtox(data)+")" << "\n";
 		PrintStatus();
 		break;
 	case TOWNSIO_HOST_CONSOLE:
@@ -72,6 +73,32 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 			char c=data;
 			std::cout << c;
 		}
+		break;
+	case TOWNSIO_STEAL_CONSOLE:
+		{
+			// Write from CON device.
+
+			// To be perfect, ES and BX should be found by analyzing Strategy function.
+			// But, practically, Interrupt is called immediately after Strategy.
+			// ES and BX are unlikely to change in between.
+			auto ES=CPU().state.ES();
+			auto BX=CPU().GetBX();
+
+			auto req=CPU().DebugFetchByte(16,ES,BX+2,mem);
+
+			if(8==req || // Write
+			   9==req)   // Write with verify
+			{
+				auto seg=CPU().DebugFetchWord(16,ES,BX+0x10,mem);
+				auto off=CPU().DebugFetchWord(16,ES,BX+0x0E,mem);
+				auto linear=seg*0x10+off;
+				StealConsole(CPU().DebugFetchByteByLinearAddress(mem,linear));
+			}
+
+			CPU().SetBX(0);
+		}
+		break;
+	case TOWNSIO_STEAL_CONSOLE_DOS6:
 		break;
 
 	case TOWNSIO_VM_HOST_IF_CMD_STATUS:
@@ -140,10 +167,30 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 }
 /* virtual */ void FMTownsCommon::IOWriteWord(unsigned int ioport,unsigned int data)
 {
+	switch(ioport)
+	{
+	case TOWNS_QUICK_DEBUG_BREAK: //        0xEA,  // Writing to this I/O port will break the VM.
+		debugger.ExternalBreak("Break Request from VM (0x"+cpputil::Ustox(data)+")");
+		return;
+	case TOWNS_QUICK_DEBUG_STATE: //        0xEB,  // Writing to this I/O port will show the VM state, not break.
+		std::cout << "Status Request from VM (0x"+cpputil::Ustox(data)+")" << "\n";
+		PrintStatus();
+		return;
+	}
 	Device::IOWriteWord(ioport,data);
 }
 /* virtual */ void FMTownsCommon::IOWriteDword(unsigned int ioport,unsigned int data)
 {
+	switch(ioport)
+	{
+	case TOWNS_QUICK_DEBUG_BREAK: //        0xEA,  // Writing to this I/O port will break the VM.
+		debugger.ExternalBreak("Break Request from VM (0x"+cpputil::Uitox(data)+")");
+		return;
+	case TOWNS_QUICK_DEBUG_STATE: //        0xEB,  // Writing to this I/O port will show the VM state, not break.
+		std::cout << "Status Request from VM (0x"+cpputil::Uitox(data)+")" << "\n";
+		PrintStatus();
+		return;
+	}
 	Device::IOWriteDword(ioport,data);
 }
 /* virtual */ unsigned int FMTownsCommon::IOReadByte(unsigned int ioport)
@@ -261,6 +308,16 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 			return data;
 		}
 		break;
+
+	case TOWNSIO_STEAL_CONSOLE:
+		// Read from INT 29H except DOS6.
+		StealConsole(CPU().GetAL());
+		CPU().state.SS()=CPU().state.CS();
+		return CPU().GetAL(); // IN 0ECh,AL -> AL no change.
+	case TOWNSIO_STEAL_CONSOLE_DOS6:
+		StealConsole(CPU().GetAL());
+		CPU().SetBX(0); // IN 0ECh,AL / NOP replaced MOV BX,0
+		return CPU().GetAL(); // IN 0ECh,AL -> AL no change.
 	}
 	return 0xff;
 }
@@ -289,7 +346,7 @@ void FMTownsCommon::UpdateEleVol(int eleVol)
 
 /* virtual */ void FMTownsCommon::RunScheduledTask(unsigned long long int townsTime)
 {
-	CPU().Reset();
+	Reset();
 }
 void FMTownsCommon::AdjustMachineSpeedForMemoryWait(void)
 {

@@ -21,6 +21,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include "sprite.h"
 #include "towns.h"
 #include "townsdef.h"
+#include "fmt3631.h"
 
 
 
@@ -31,166 +32,6 @@ const unsigned int TownsCRTC::CLKSELtoHz[4]=
 	25175000,   // 25175KHz
 	21052500,   // 21052KHz
 };
-
-void TownsCRTC::AnalogPalette::Reset(void)
-{
-	codeLatch=0;
-	for(int i=0; i<2; ++i)
-	{
-		plt16[i][ 0].Set(  0,  0,  0,255);
-		plt16[i][ 1].Set(  0,  0,128,255);
-		plt16[i][ 2].Set(128,  0,  0,255);
-		plt16[i][ 3].Set(128,  0,128,255);
-		plt16[i][ 4].Set(  0,128,  0,255);
-		plt16[i][ 5].Set(  0,128,128,255);
-		plt16[i][ 6].Set(128,128,  0,255);
-		plt16[i][ 7].Set(128,128,128,255);
-		plt16[i][ 8].Set(  0,  0,  0,255);
-		plt16[i][ 9].Set(  0,  0,255,255);
-		plt16[i][10].Set(255,  0,  0,255);
-		plt16[i][11].Set(255,  0,255,255);
-		plt16[i][12].Set(  0,255,  0,255);
-		plt16[i][13].Set(  0,255,255,255);
-		plt16[i][14].Set(255,255,  0,255);
-		plt16[i][15].Set(255,255,255,255);
-	}
-
-	for(int i=0; i<256; ++i)
-	{
-		plt256[i].Set(255,255,255,255);
-	}
-}
-
-void TownsCRTC::HardwareMouseCursor::Reset(void)
-{
-	defining=false;
-	defined=false;
-	ptnCount=0;
-	unknownValueReg8=0; // Maybe color.
-	X=0;
-	Y=0;
-	originX=0;
-	originY=0;
-	for(auto &c : ANDPtn)
-	{
-		c=0;
-	}
-	for(auto &c : ORPtn)
-	{
-		c=0;
-	}
-
-}
-
-void TownsCRTC::AnalogPalette::Set16(unsigned int page,unsigned int component,unsigned char v)
-{
-	v=v&0xF0;
-	v|=(v>>4);
-	plt16[page][codeLatch&0x0F].v[component]=v;
-}
-void TownsCRTC::AnalogPalette::Set256(unsigned int component,unsigned char v)
-{
-	plt256[codeLatch].v[component]=v;
-}
-void TownsCRTC::AnalogPalette::SetRed(unsigned char v,unsigned int PLT)
-{
-	switch(PLT)
-	{
-	case 0: // 16-color paletter Layer 0
-		Set16(0,0,v);
-		break;
-	case 2: // 16-color paletter Layer 1
-		Set16(1,0,v);
-		break;
-	case 1: // 256-color paletter
-	case 3: // 256-color paletter
-		Set256(0,v);
-		break;
-	}
-}
-void TownsCRTC::AnalogPalette::SetGreen(unsigned char v,unsigned int PLT)
-{
-	switch(PLT)
-	{
-	case 0: // 16-color paletter Layer 0
-		Set16(0,1,v);
-		break;
-	case 2: // 16-color paletter Layer 1
-		Set16(1,1,v);
-		break;
-	case 1: // 256-color paletter
-	case 3: // 256-color paletter
-		Set256(1,v);
-		break;
-	}
-}
-void TownsCRTC::AnalogPalette::SetBlue(unsigned char v,unsigned int PLT)
-{
-	switch(PLT)
-	{
-	case 0: // 16-color paletter Layer 0
-		Set16(0,2,v);
-		break;
-	case 2: // 16-color paletter Layer 1
-		Set16(1,2,v);
-		break;
-	case 1: // 256-color paletter
-	case 3: // 256-color paletter
-		Set256(2,v);
-		break;
-	}
-}
-
-unsigned char TownsCRTC::AnalogPalette::Get16(unsigned int page,unsigned int component) const
-{
-	return plt16[page][codeLatch&0x0F][component]&0xF0;
-}
-unsigned char TownsCRTC::AnalogPalette::Get256(unsigned int component) const
-{
-	return plt256[codeLatch][component];
-}
-unsigned char TownsCRTC::AnalogPalette::GetRed(unsigned int PLT) const
-{
-	switch(PLT)
-	{
-	case 0: // 16-color paletter Layer 0
-		return Get16(0,0);
-	case 2: // 16-color paletter Layer 1
-		return Get16(1,0);
-	case 1: // 256-color paletter
-	case 3: // 256-color paletter
-		return Get256(0);
-	}
-	return 0;
-}
-unsigned char TownsCRTC::AnalogPalette::GetGreen(unsigned int PLT) const
-{
-	switch(PLT)
-	{
-	case 0: // 16-color paletter Layer 0
-		return Get16(0,1);
-	case 2: // 16-color paletter Layer 1
-		return Get16(1,1);
-	case 1: // 256-color paletter
-	case 3: // 256-color paletter
-		return Get256(1);
-	}
-	return 0;
-}
-unsigned char TownsCRTC::AnalogPalette::GetBlue(unsigned int PLT) const
-{
-	switch(PLT)
-	{
-	case 0: // 16-color paletter Layer 0
-		return Get16(0,2);
-	case 2: // 16-color paletter Layer 1
-		return Get16(1,2);
-	case 1: // 256-color paletter
-	case 3: // 256-color paletter
-		return Get256(2);
-	}
-	return 0;
-}
 
 
 ////////////////////////////////////////////////////////////
@@ -224,6 +65,7 @@ void TownsCRTC::State::Reset(void)
 
 	palette.Reset();
 	highResCrtcMouse.Reset();
+	highResCrtcMouse.wid=64;
 
 	for(auto &d : highResCrtcReg)
 	{
@@ -283,10 +125,11 @@ void TownsCRTC::ScreenModeCache::MakeFMRCompatible(void)
 ////////////////////////////////////////////////////////////
 
 
-TownsCRTC::TownsCRTC(class FMTownsCommon *ptr,TownsSprite *spritePtr) : Device(ptr)
+TownsCRTC::TownsCRTC(class FMTownsCommon *ptr,TownsSprite *spritePtr,class FMT3631 *fmt3631) : Device(ptr)
 {
 	this->townsPtr=ptr;
 	this->spritePtr=spritePtr;
+	this->fmt3631=fmt3631; // May not be usable yet.  Do not use it inside the constructor.
 	state.Reset();
 
 	// Tentatively
@@ -337,9 +180,18 @@ bool TownsCRTC::AvoidFirst1msOfVerticalPeriod(const unsigned long long int towns
 	return  1000000<intoFrame && intoFrame<CRT_VERTICAL_DURATION;
 }
 
+void TownsCRTC::PreponeTownsNextFastDevicePollingTime(void) const
+{
+	townsPtr->PreponeNextFastDevicePollingTime(NextVSYNCRisingEdge(townsPtr->state.townsTime));
+}
+
 bool TownsCRTC::InSinglePageMode(void) const
 {
-	if(true!=state.highResCRTCEnabled)
+	if(true==fmt3631->IsEnabled())
+	{
+		return true;
+	}
+	else if(true!=state.highResCRTCEnabled)
 	{
 		return LowResCrtcIsInSinglePageMode();
 	}
@@ -356,7 +208,11 @@ bool TownsCRTC::LowResCrtcIsInSinglePageMode(void) const
 
 uint32_t TownsCRTC::GetEffectiveVRAMSize(void) const
 {
-	if(true==state.highResCRTCEnabled)
+	if(true==fmt3631->IsEnabled())
+	{
+		return fmt3631->state.vram.size();
+	}
+	else if(true==state.highResCRTCEnabled)
 	{
 		return TOWNS_VRAM_SIZE;
 	}
@@ -404,7 +260,11 @@ unsigned int TownsCRTC::GetBaseClockScaler(void) const
 }
 Vec2i TownsCRTC::GetPageZoom2X(unsigned char page) const
 {
-	if(true!=state.highResCRTCEnabled)
+	if(true==fmt3631->IsEnabled())
+	{
+		return Vec2i::Make(2,2);
+	}
+	else if(true!=state.highResCRTCEnabled)
 	{
 		return GetLowResPageZoom2X(page);
 	}
@@ -441,7 +301,7 @@ Vec2i TownsCRTC::GetLowResPageZoom2X(unsigned char page) const
 			zoom[1]*=4;
 		}
 	}
-	else if(3==CLKSEL() && 0x29D==state.crtcReg[REG_HST])
+	else if(3==CLKSEL() && (0x29D == state.crtcReg[REG_HST] || 0x2BD == state.crtcReg[REG_HST]))
 	{
 		// VING games use this settings.  Apparently zoom-x needs to be interpreted as 4+(pageZoom&15).
 		// Chase HQ        HST=029DH  ZOOM=1111H  Zoom2X=5
@@ -452,6 +312,7 @@ Vec2i TownsCRTC::GetLowResPageZoom2X(unsigned char page) const
 		// New Zealand Story  N/A
 		// Alshark Opening HST=029DH  ZOOM=0000H  Zoom2X=2
 		// Freeware Collection 8 Oh!FM TOWNS Cover Picture Collection  HST=029DH  ZOOM=0000H  Zoom2X=2
+		// Ningyou Tsukai  HST=02BDH  ZOOM=1111H  Zoom2X=5
 		zoom[0]=2+3*(pageZoom&15); // Is it right?
 		zoom[1]*=2;
 	}
@@ -465,7 +326,11 @@ Vec2i TownsCRTC::GetLowResPageZoom2X(unsigned char page) const
 }
 Vec2i TownsCRTC::GetPageOriginOnMonitor(unsigned char page) const
 {
-	if(true!=state.highResCRTCEnabled)
+	if(true==fmt3631->IsEnabled())
+	{
+		return Vec2i::Make(0,0);
+	}
+	else if(true!=state.highResCRTCEnabled)
 	{
 		return GetLowResPageOriginOnMonitor(page);
 	}
@@ -580,7 +445,7 @@ Vec2i TownsCRTC::GetPageSizeOnMonitor(unsigned char page) const
 		wid/=2;
 		hei*=2;
 	}
-	else if(3==CLKSEL() && 0x29D==state.crtcReg[REG_HST]) // VING Setting
+	else if(3==CLKSEL() && (0x29D==state.crtcReg[REG_HST] || 0x2BD==state.crtcReg[REG_HST])) // VING(0x29D) or Ningyou Tukai(0x2BD) Setting 
 	{
 		// VING games use this settings.  Apparently zoom-x needs to be interpreted as 4+(pageZoom&15).
 		// Chase HQ        HDS0=0082H  HDE0=00282H (Diff=512)  HST=029DH  ZOOM=1111H  Zoom2X=5  wid=640
@@ -600,6 +465,9 @@ Vec2i TownsCRTC::GetPageSizeOnMonitor(unsigned char page) const
 		//                 HDS0=0082H  HDE0=0282H  (Diff=512)  HST=029DH  ZOOM=4242H  Zoom2X=8  wid=640
 		//                 HDS0=0082H  HDE0=0282H  (Diff=512)  HST=029DH  ZOOM=4343H  Zoom2X=11 wid=640
 		//                 HDS0=0082H  HDE0=0282H  (Diff=512)  HST=029DH  ZOOM=5353H  Zoom2X=11 wid=640
+
+		// Ningyou Tsukai (Metal&Lace)
+		//                 HDS0=008AH  HDE0=028AH  (Diff=512)  HST=02BDH  ZOOM=1111H  Zoom2X=5  wid=640
 
 		// Looks like zoom2X=5 -> wid*5/4
 		//            zoom2X=2 -> wid*4/4
@@ -668,16 +536,27 @@ unsigned int TownsCRTC::GetPageBitsPerPixel(unsigned char page) const
 }
 unsigned int TownsCRTC::GetPageVRAMAddressOffset(unsigned char page) const
 {
-	// [2] pp. 145
-	auto FA0=state.crtcReg[REG_FA0+page*4];
-	switch(GetPageBitsPerPixel(page))
+	if(true==fmt3631->IsEnabled())
 	{
-	case 4:
-		return FA0*4;  // 8 pixels for 1 count.
-	case 8:
-		return FA0*8;  // 8 pixels for 1 count.
-	case 16:
-		return (LowResCrtcIsInSinglePageMode() ? FA0*8 : FA0*4); // 4 pixels or 2 pixels depending on the single-page or 2-page mode.
+		return 0; // Apparently there's no offset.
+	}
+	else if(true!=state.highResCRTCEnabled)
+	{
+		// [2] pp. 145
+		auto FA0=state.crtcReg[REG_FA0+page*4];
+		switch(GetPageBitsPerPixel(page))
+		{
+		case 4:
+			return FA0*4;  // 8 pixels for 1 count.
+		case 8:
+			return FA0*8;  // 8 pixels for 1 count.
+		case 16:
+			return (LowResCrtcIsInSinglePageMode() ? FA0*8 : FA0*4); // 4 pixels or 2 pixels depending on the single-page or 2-page mode.
+		}
+	}
+	else
+	{
+		return GetHighResPageVRAMAddressOffset(page);
 	}
 	return 0;
 }
@@ -694,18 +573,30 @@ unsigned int TownsCRTC::GetPriorityPage(void) const
 }
 unsigned int TownsCRTC::GetPageBytesPerLine(unsigned char page) const
 {
-	auto LOx=state.crtcReg[REG_LO0+page*4];
-	auto numBytes=LOx*4;   // Why did I think it was (LOx-FOx)*4?
-	if(true==LowResCrtcIsInSinglePageMode())
+	unsigned int numBytes;
+	if(true!=state.highResCRTCEnabled)
 	{
-		numBytes*=2;
+		auto LOx=state.crtcReg[REG_LO0+page*4];
+		numBytes=LOx*4;   // Why did I think it was (LOx-FOx)*4?
+		if(true==LowResCrtcIsInSinglePageMode())
+		{
+			numBytes*=2;
+		}
+	}
+	else
+	{
+		numBytes=GetHighResVRAMWidthInPixels(page)*GetHighResVRAMBitsPerPixel(page)/8;
 	}
 	return numBytes;
 }
 
 void TownsCRTC::MakePageLayerInfo(Layer &layer,unsigned char page) const
 {
-	if(true!=state.highResCRTCEnabled)
+	if(true==fmt3631->IsEnabled())
+	{
+		fmt3631->MakePageLayerInfo(layer);
+	}
+	else if(true!=state.highResCRTCEnabled)
 	{
 		MakeLowResPageLayerInfo(layer,page);
 	}
@@ -717,7 +608,11 @@ void TownsCRTC::MakePageLayerInfo(Layer &layer,unsigned char page) const
 
 const TownsCRTC::AnalogPalette &TownsCRTC::GetPalette(void) const
 {
-	if(true==state.highResCRTCEnabled)
+	if(true==fmt3631->IsEnabled())
+	{
+		return fmt3631->GetPalette();
+	}
+	else if(true==state.highResCRTCEnabled)
 	{
 		return state.highResCrtcPalette;
 	}
@@ -731,6 +626,8 @@ void TownsCRTC::MakeLowResPageLayerInfo(Layer &layer,unsigned char page) const
 {
 	page&=1;
 	layer.bitsPerPixel=GetPageBitsPerPixel(page);
+	layer.highColor565=false;
+	layer.highColorGRB=true; // Should be integrated with highResRGBSwap
 	layer.highResRGBSwap=0; // Not used by the low-res screen modes.
 	layer.originOnMonitor=GetLowResPageOriginOnMonitor(page);
 	layer.sizeOnMonitor=GetPageSizeOnMonitor(page);
@@ -905,6 +802,13 @@ void TownsCRTC::MEMIOWriteFMRVRAMDisplayMode(unsigned char data)
 				state.highResCrtcReg4Bit0=false;
 				state.highResCrtcReg4Bit1=false;
 			}
+			else if(1==data)
+			{
+				// Windows 3.1 24-bpp driver writes 0x01 and expect 0x01 back.
+				// I have no idea what's the **** this register is for.
+				state.highResCrtcReg4Bit0=true;
+				state.highResCrtcReg4Bit1=false;
+			}
 			break;
 		case HIGHRES_REG_PALINDEX:
 			state.highResCrtcPalette.codeLatch=data;
@@ -924,19 +828,17 @@ void TownsCRTC::MEMIOWriteFMRVRAMDisplayMode(unsigned char data)
 			}
 			break;
 		case HIGHRES_REG_MOUSE_PATTERN:
-			if(true==state.highResCrtcMouse.defining)
+			if(state.highResCrtcMouse.ptnCount<512)
 			{
-				if(state.highResCrtcMouse.ptnCount<512)
-				{
-					state.highResCrtcMouse.ANDPtn[state.highResCrtcMouse.ptnCount]=data;
-					++state.highResCrtcMouse.ptnCount;
-				}
-				else if(state.highResCrtcMouse.ptnCount<1024)
-				{
-					state.highResCrtcMouse.ORPtn[state.highResCrtcMouse.ptnCount-512]=data;
-					++state.highResCrtcMouse.ptnCount;
-				}
+				state.highResCrtcMouse.ANDPtn[state.highResCrtcMouse.ptnCount]=data;
+				++state.highResCrtcMouse.ptnCount;
 			}
+			else if(state.highResCrtcMouse.ptnCount<1024)
+			{
+				state.highResCrtcMouse.ORPtn[state.highResCrtcMouse.ptnCount-512]=data;
+				++state.highResCrtcMouse.ptnCount;
+			}
+			state.highResCrtcMouse.ptnCount&=1023; // Just in case.
 			break;
 		}
 		break;
@@ -1102,6 +1004,13 @@ void TownsCRTC::MEMIOWriteFMRVRAMDisplayMode(unsigned char data)
 				state.highResCrtcReg4Bit0=false;
 				state.highResCrtcReg4Bit1=false;
 			}
+			else if(1==data)
+			{
+				// Windows 3.1 24-bpp driver writes 0x01 and expect 0x01 back.
+				// I have no idea what's the **** this register is for.
+				state.highResCrtcReg4Bit0=true;
+				state.highResCrtcReg4Bit1=false;
+			}
 			break;
 		case HIGHRES_REG_PALINDEX:
 			state.highResCrtcPalette.codeLatch=data&0xFF;
@@ -1142,7 +1051,7 @@ void TownsCRTC::MEMIOWriteFMRVRAMDisplayMode(unsigned char data)
 		case HIGHRES_REG_WD_MOUSE_DEFINE: //0x206
 			if(0==data)
 			{
-				state.highResCrtcMouse.defining=true;
+				state.highResCrtcMouse.defining=true;  // Apparently it is just on/off.  May not have to change ptnCount.
 				state.highResCrtcMouse.defined=false;
 				state.highResCrtcMouse.ptnCount=0;
 			}
@@ -1157,6 +1066,7 @@ void TownsCRTC::MEMIOWriteFMRVRAMDisplayMode(unsigned char data)
 			break;
 		case HIGHRES_REG_WD_MOUSE_UNKNOWN8: //0x208,
 			state.highResCrtcMouse.unknownValueReg8=data;
+			state.highResCrtcMouse.ptnCount=data; // Probably it is pattern count.
 			break;
 		case HIGHRES_REG_MOUSE_PATTERN:
 			if(true==monitorCRTC2)
@@ -1338,6 +1248,7 @@ void TownsCRTC::MEMIOWriteFMRVRAMDisplayMode(unsigned char data)
 			break;
 		case HIGHRES_REG_WD_MOUSE_UNKNOWN8: //0x208,
 			state.highResCrtcMouse.unknownValueReg8=data;
+			state.highResCrtcMouse.ptnCount=data; // Probably it is pattern count.
 			break;
 		}
 		break;
@@ -1490,6 +1401,7 @@ void TownsCRTC::MEMIOWriteFMRVRAMDisplayMode(unsigned char data)
 			     |(true==DSPTH1 ? 0x20 : 0)
 			     |(true==DSPTV0 ? 0x40 : 0)
 			     |(true==DSPTV1 ? 0x80 : 0);
+			PreponeTownsNextFastDevicePollingTime();
 		}
 		else
 		{
@@ -1529,6 +1441,7 @@ void TownsCRTC::MEMIOWriteFMRVRAMDisplayMode(unsigned char data)
 			break;
 		case HIGHRES_REG_VSYNC1:
 			// Based on TBIOS disassembly.
+			PreponeTownsNextFastDevicePollingTime();
 			if(true==InVSYNC(townsPtr->state.townsTime))
 			{
 				data=2;
@@ -1554,6 +1467,24 @@ void TownsCRTC::MEMIOWriteFMRVRAMDisplayMode(unsigned char data)
 				}
 			}
 			break;
+
+		case HIGHRES_REG_WD_MOUSEX: // 0x200,        // Hardware Mouse Cursor X
+		case HIGHRES_REG_WD_MOUSEY: //0x201,        // Hardware Mouse Cursor Y
+		case HIGHRES_REG_MOUSE_PATTERN: // 0x209,
+			return 0xFF;
+		case HIGHRES_REG_WD_MOUSE_ORIGINX: //0x202
+			data=state.highResCrtcMouse.originX&0xFF;
+			break;
+		case HIGHRES_REG_WD_MOUSE_ORIGINY: //0x203
+			data=state.highResCrtcMouse.originY&0xFF;
+			break;
+		case HIGHRES_REG_WD_MOUSE_DEFINE: //0x206
+			data=(state.highResCrtcMouse.defined ? 1 : 0);
+			break;
+		case HIGHRES_REG_WD_MOUSE_UNKNOWN8: //0x208,
+			data=state.highResCrtcMouse.ptnCount&0xFF; // Probably it is pattern count.
+			break;
+
 		default:
 			data=state.highResCrtcReg[state.highResCrtcRegAddrLatch];
 			break;
@@ -1581,6 +1512,24 @@ void TownsCRTC::MEMIOWriteFMRVRAMDisplayMode(unsigned char data)
 				}
 			}
 			break;
+
+		case HIGHRES_REG_WD_MOUSEX: // 0x200,        // Hardware Mouse Cursor X
+		case HIGHRES_REG_WD_MOUSEY: //0x201,        // Hardware Mouse Cursor Y
+		case HIGHRES_REG_MOUSE_PATTERN: // 0x209,
+			return 0xFF;
+		case HIGHRES_REG_WD_MOUSE_ORIGINX: //0x202
+			data=(state.highResCrtcMouse.originX>>8)&0xFF;
+			break;
+		case HIGHRES_REG_WD_MOUSE_ORIGINY: //0x203
+			data=(state.highResCrtcMouse.originY>>8)&0xFF;
+			break;
+		case HIGHRES_REG_WD_MOUSE_DEFINE: //0x206
+			data=0;
+			break;
+		case HIGHRES_REG_WD_MOUSE_UNKNOWN8: //0x208,
+			data=(state.highResCrtcMouse.ptnCount>>8)&0xFF; // Probably it is pattern count.
+			break;
+
 		default:
 			data=((state.highResCrtcReg[state.highResCrtcRegAddrLatch]>>8)&0xFF);
 			break;
@@ -1605,20 +1554,48 @@ void TownsCRTC::MEMIOWriteFMRVRAMDisplayMode(unsigned char data)
 				}
 			}
 			break;
+
+		case HIGHRES_REG_WD_MOUSEX: // 0x200,        // Hardware Mouse Cursor X
+		case HIGHRES_REG_WD_MOUSEY: //0x201,        // Hardware Mouse Cursor Y
+		case HIGHRES_REG_MOUSE_PATTERN: // 0x209,
+		case HIGHRES_REG_WD_MOUSE_ORIGINX: //0x202
+		case HIGHRES_REG_WD_MOUSE_ORIGINY: //0x203
+		case HIGHRES_REG_WD_MOUSE_DEFINE: //0x206
+		case HIGHRES_REG_WD_MOUSE_UNKNOWN8: //0x208,
+			data=0xFF;
+			break;
+
 		default:
 			data=((state.highResCrtcReg[state.highResCrtcRegAddrLatch]>>16)&0xFF);
 			break;
 		}
 		break;
 	case TOWNSIO_MX_IMGOUT_D3://   0x477,
-		data=((state.highResCrtcReg[state.highResCrtcRegAddrLatch]>>24)&0xFF);
+		switch(state.highResCrtcRegAddrLatch)
+		{
+		case HIGHRES_REG_WD_MOUSEX: // 0x200,        // Hardware Mouse Cursor X
+		case HIGHRES_REG_WD_MOUSEY: //0x201,        // Hardware Mouse Cursor Y
+		case HIGHRES_REG_MOUSE_PATTERN: // 0x209,
+		case HIGHRES_REG_WD_MOUSE_ORIGINX: //0x202
+		case HIGHRES_REG_WD_MOUSE_ORIGINY: //0x203
+		case HIGHRES_REG_WD_MOUSE_DEFINE: //0x206
+		case HIGHRES_REG_WD_MOUSE_UNKNOWN8: //0x208,
+			data=0xFF;
+			break;
+
+		default:
+			data=((state.highResCrtcReg[state.highResCrtcRegAddrLatch]>>24)&0xFF);
+			break;
+		}
 		break;
 
-	case TOWNSIO_HSYNC_VSYNC:
+	case TOWNSIO_HSYNC_VSYNC: // 0xFDA0
+		PreponeTownsNextFastDevicePollingTime();
 		data= (true==InVSYNC(townsPtr->state.townsTime) ? 1 : 0)
 		     |(true==InHSYNC(townsPtr->state.townsTime) ? 2 : 0);
 		break;
 	case TOWNSIO_FMR_HSYNC_VSYNC: // 0xFF86
+		PreponeTownsNextFastDevicePollingTime();
 		data= (true==InVSYNC(townsPtr->state.townsTime) ? 0x04 : 0)
 		     |(true==InHSYNC(townsPtr->state.townsTime) ? 0x80 : 0)
 		     |0x10;
@@ -1655,9 +1632,13 @@ void TownsCRTC::WriteCR0(unsigned int data)
 Vec2i TownsCRTC::GetRenderSize(void) const
 {
 	const int minHei=402;  // Reading mackerel for 2 pixels.
+	if(true==fmt3631->IsEnabled())
+	{
+		return Vec2i::Make(fmt3631->Width(),fmt3631->Height());
+	}
 	// What do I mean by 'read mackerel'?  Translate to Japanese and back to English.
 	// Well, google translate didn't work.  Use something better.
-	if(true!=state.highResCRTCEnabled)
+	else if(true!=state.highResCRTCEnabled)
 	{
 		const int maxHei=512;
 		// Height still has errors.  Some 320x240 mode returns 320x880 size.  (Damn it!  I forgot which one.)
@@ -1880,6 +1861,11 @@ std::vector <std::string> TownsCRTC::GetStatusText(void) const
 	text.push_back("");
 	text.back()+="FMR VRAM Display Planes:"+cpputil::Ubtox(state.FMRGVRAMDisplayPlanes);
 
+	if(true==fmt3631->IsEnabled())
+	{
+		std::cout << "FMT-3631 (Power 9000) is enabled.\n";
+	}
+
 	return text;
 }
 
@@ -1969,32 +1955,49 @@ std::vector <std::string> TownsCRTC::GetLowResPaletteText(const AnalogPalette &p
 	return text;
 }
 
-void TownsCRTC::MakeHighResPageLayerInfo(Layer &layer,unsigned char page) const
+unsigned int TownsCRTC::GetHighResVRAMWidthInPixels(int page) const
+{
+	return state.highResCrtcReg[HIGHRES_REG_P0_VRAM_WID+0x10*page];
+}
+
+unsigned int TownsCRTC::GetHighResVRAMBitsPerPixel(int page) const
 {
 	switch(state.highResCrtcReg[HIGHRES_REG_P0_PALETTE+0x10*page]&0xFFFF)
 	{
 	default:
 	case 0x0F:
-		layer.bitsPerPixel=4;
-		break;
+		return 4;
 	case 0xFF:
-		layer.bitsPerPixel=8;
-		break;
+		return 8;
 	case 0x8000:
-		layer.bitsPerPixel=16;
-		break;
+		return 16;
 	case 0xFFFF:
-		layer.bitsPerPixel=24;
-		break;
+		return 24;
 	}
+}
+
+unsigned int TownsCRTC::GetHighResPageVRAMAddressOffset(int page) const
+{
+	auto bitsPerPixel=GetHighResVRAMBitsPerPixel(page);
+	unsigned int dx=state.highResCrtcReg[HIGHRES_REG_P0_VRAM_OFFSET_X+0x10*page];
+	unsigned int dy=state.highResCrtcReg[HIGHRES_REG_P0_VRAM_OFFSET_Y+0x10*page];
+	unsigned int vramWidInPix=GetHighResVRAMWidthInPixels(page);
+
+	return (dy*vramWidInPix+dx)*bitsPerPixel/8;
+}
+
+void TownsCRTC::MakeHighResPageLayerInfo(Layer &layer,unsigned char page) const
+{
+	layer.bitsPerPixel=GetHighResVRAMBitsPerPixel(page);
+	layer.highColor565=false;
+	layer.highColorGRB=true; // Should be integrated with highResRGBSwap
+
 	layer.highResRGBSwap=state.highResCrtcReg[HIGHRES_REG_RGB_BGR_BRG_OR_ELSE]; // Hopefully meaningful only in the 24-bit color mode.  Figured 2025/07/02
 	layer.VRAMAddr=0x80000*page;
 
-	unsigned int dx=state.highResCrtcReg[HIGHRES_REG_P0_VRAM_OFFSET_X+0x10*page];
-	unsigned int dy=state.highResCrtcReg[HIGHRES_REG_P0_VRAM_OFFSET_Y+0x10*page];
-	unsigned int vramWidInPix=state.highResCrtcReg[HIGHRES_REG_P0_VRAM_WID+0x10*page];
+	unsigned int vramWidInPix=GetHighResVRAMWidthInPixels(page);
 
-	layer.VRAMOffset=(dy*vramWidInPix+dx)*layer.bitsPerPixel/8;
+	layer.VRAMOffset=GetHighResPageVRAMAddressOffset(page);
 	layer.FlipVRAMOffset =0;        // Probably FM-R/Sprite page is not applicable to CRTC2.
 	layer.FMRGVRAMMask=0x0F;        // Probably mask is not applicable to CRTC2.
 	layer.originOnMonitor=GetHighResPageOriginOnMonitor(page);
@@ -2066,53 +2069,43 @@ std::vector <std::string> TownsCRTC::GetHighResStatusText(void) const
 		text.insert(text.end(),page1Info.begin(),page1Info.end());
 	}
 
+	text.push_back("Hardware Mouse Cursor is ");
+	text.back()+=std::string(true==state.highResCrtcMouse.defined ? "Enabled" : "Disabled");
+	text.back()+="  Origin (";
+	text.back()+=cpputil::Uitoa(state.highResCrtcMouse.originX);
+	text.back()+=",";
+	text.back()+=cpputil::Uitoa(state.highResCrtcMouse.originY);
+	text.back()+=")";
+
+	text.push_back("Hardware Mouse Cusros XOR Pattern");
+	for(int i=0; i<sizeof(state.highResCrtcMouse.ORPtn); ++i)
+	{
+		if(0==i%32)
+		{
+			text.push_back("");
+		}
+		text.back()+=cpputil::Ubtox(state.highResCrtcMouse.ORPtn[i]);
+	}
+	text.push_back("Hardware Mouse Cusros AND Pattern");
+	for(int i=0; i<sizeof(state.highResCrtcMouse.ANDPtn); ++i)
+	{
+		if(0==i%32)
+		{
+			text.push_back("");
+		}
+		text.back()+=cpputil::Ubtox(state.highResCrtcMouse.ANDPtn[i]);
+	}
+
+	if(true==fmt3631->IsEnabled())
+	{
+		std::cout << "FMT-3631 (Power 9000) is enabled.\n";
+	}
+
 	return text;
 }
 std::vector <std::string> TownsCRTC::GetHighResPaletteText(void) const
 {
 	return GetLowResPaletteText(state.highResCrtcPalette);
-}
-
-
-void TownsCRTC::AnalogPalette::Serialize(std::vector <unsigned char> &data) const
-{
-	PushUint32(data,codeLatch);
-	for(int i=0; i<2; ++i)
-	{
-		for(int j=0; j<16; ++j)
-		{
-			uint32_t col;
-			col=(plt16[i][j][2]<<16)|(plt16[i][j][1]<<8)|plt16[i][j][0];
-			PushUint32(data,col);
-		}
-	}
-	for(auto p : plt256)
-	{
-		uint32_t col;
-		col=(p[2]<<16)|(p[1]<<8)|p[0];
-		PushUint32(data,col);
-	}
-}
-void TownsCRTC::AnalogPalette::Deserialize(const unsigned char *&data)
-{
-	codeLatch=ReadUint32(data);
-	for(int i=0; i<2; ++i)
-	{
-		for(int j=0; j<16; ++j)
-		{
-			uint32_t col=ReadUint32(data);
-			plt16[i][j][2]=(col>>16)&255;
-			plt16[i][j][1]=(col>>8)&255;
-			plt16[i][j][0]=col&255;
-		}
-	}
-	for(auto &p : plt256)
-	{
-		uint32_t col=ReadUint32(data);
-		p[2]=(col>>16)&255;
-		p[1]=(col>>8)&255;
-		p[0]=col&255;
-	}
 }
 
 /* virtual */ uint32_t TownsCRTC::SerializeVersion(void) const

@@ -40,6 +40,7 @@ class TownsTgDrv : public Device
 {
 private:
 	class FMTownsCommon *townsPtr;
+	bool monitor=false;
 public:
 	virtual const char *DeviceName(void) const{return "TGDRIVE";}
 
@@ -49,9 +50,11 @@ public:
 	const uint16_t DRIVELETTER_BUFFER=0x0109; // CS:0109H 8-byte drive-letter buffer
 	const uint16_t DUMMYDPB_BUFFER=0x211;
 
-	bool monitor=false;
 	bool useSlashSlash=false; // Keep it false for compatible ROM.
 	FileSys sharedDir[TOWNS_TGDRV_MAX_NUM_DRIVES];
+
+	void SetMonitor(bool monitor);
+	bool GetMonitor(void) const;
 
 	class State
 	{
@@ -145,6 +148,7 @@ public:
 	unsigned int FetchDeviceInfoFromSFT(const class i486DXCommon::SegmentRegister &seg,uint32_t offset) const;
 	std::string FetchCString(uint32_t physAddr) const;
 	std::string FetchCString(const class i486DXCommon::SegmentRegister &seg,uint32_t offset) const;
+	uint32_t FetchDOSDateTimeFromSFT(const class i486DXCommon::SegmentRegister &seg,uint32_t offset) const;
 
 	uint8_t FetchByte(uint32_t linearAddr) const;
 	uint16_t FetchWord(uint32_t linearAddr) const;

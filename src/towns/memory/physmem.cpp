@@ -332,6 +332,17 @@ void TownsPhysicalMemory::State::Reset(void)
 	return Device::IOReadWord(ioport);
 }
 
+void TownsPhysicalMemory::IOWriteDword(unsigned int ioport,unsigned int data)
+{
+	switch(ioport)
+	{
+	case TOWNSIO_VRAMACCESSCTRL_DATA_LOW:
+		IOWriteWord(ioport,data);
+		return;
+	}
+	return Device::IOWriteDword(ioport,data);
+}
+
 TownsPhysicalMemory::TownsPhysicalMemory(class FMTownsCommon *townsPtr,class Memory *memPtr,class RF5C68 *pcmPtr) :
 	Device(townsPtr),
 	waveRAMAccess(townsPtr,pcmPtr,&townsPtr->sound.var.vgmRecorder),
@@ -733,6 +744,9 @@ void TownsPhysicalMemory::SetUpMemoryAccess(unsigned int townsType,unsigned int 
 		mem.AddAccess(&fontROMAccess,TOWNSADDR_FONT_BASE,TOWNSADDR_FONT_END-1);
 		mem.AddAccess(&font20ROMAccess,TOWNSADDR_FONT20_BASE,TOWNSADDR_FONT20_END-1);
 		mem.AddAccess(&waveRAMAccess,TOWNSADDR_WAVERAM_WINDOW_BASE,TOWNSADDR_WAVERAM_WINDOW_END-1);
+
+		mem.AddAccess(&townsPtr->fmt3631,TOWNSADDR_FMT3631_BASE,TOWNSADDR_FMT3631_END-1);
+		mem.AddAccess(&townsPtr->fmt3631,TOWNSADDR_FMT3632_BASE,TOWNSADDR_FMT3632_END-1);
 	}
 	else
 	{

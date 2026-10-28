@@ -649,6 +649,9 @@ bool FMTownsCommon::ControlMouse(int &diffX,int &diffY,int hostMouseX,int hostMo
 		bool considerVRAMOffset=var.considerVRAMOffsetInMouseIntegration;
 		switch(state.appSpecificSetting)
 		{
+		case TOWNS_APPSPECIFIC_HABITAT:
+			considerVRAMOffset=true;
+			break;
 		case TOWNS_APPSPECIFIC_AMARANTH3:
 			considerVRAMOffset=false;
 			break;
@@ -787,7 +790,14 @@ bool FMTownsCommon::ControlMouseByDiffDirect(int diffX,int diffY)
 	{
 		if(p.device==TownsGamePort::MOUSE)
 		{
-			p.mouseMotion.Set(-diffX,-diffY);
+			p.mouseMotion.x()-=diffX;
+			p.mouseMotion.y()-=diffY;
+
+			p.mouseMotion.x()=std::max<int>(-127,p.mouseMotion.x());
+			p.mouseMotion.y()=std::max<int>(-127,p.mouseMotion.y());
+
+			p.mouseMotion.x()=std::min<int>( 127,p.mouseMotion.x());
+			p.mouseMotion.y()=std::min<int>( 127,p.mouseMotion.y());
 		}
 	}
 	return true;
@@ -804,8 +814,21 @@ void FMTownsCommon::DontControlMouse(void)
 	}
 }
 
+void FMTownsCommon::NotifyLastKnownHostMousePosition(int mx,int my)
+{
+	mx=std::max(mx,var.mouseMinX);
+	my=std::max(my,var.mouseMinY);
+	mx=std::min(mx,var.mouseMaxX);
+	my=std::min(my,var.mouseMaxY);
+	var.lastKnownMouseX=mx;
+	var.lastKnownMouseY=my;
+}
+
 void FMTownsCommon::SetMouseButtonState(bool lButton,bool rButton)
 {
+	var.lastKnownMouseLBtn=lButton;
+	var.lastKnownMouseRBtn=rButton;
+
 	if(TOWNS_APPSPECIFIC_SUPERDAISEN==state.appSpecificSetting ||
 	   TOWNS_APPSPECIFIC_DAIKOUKAIJIDAI==state.appSpecificSetting)
 	{
@@ -915,9 +938,59 @@ void FMTownsCommon::SetCAPCOMCPSFState(int port,bool left,bool right,bool up,boo
 	p.SetCAPCOMCPSFState(left,right,up,down,A,B,X,Y,L,R,start,select,state.townsTime);
 }
 
+uint32_t FMTownsCommon::GetMouseXYOffsetInMOSWork(unsigned int tbiosid) const
+{
+	switch(tbiosid)
+	{
+	case TBIOS_V31L22A:
+		// 0110:0000FA88 8A6F44                    MOV     CH,[EDI+44H]
+		// 0110:0000FA8B 8B5752                    MOV     EDX,[EDI+52H]
+		// 0110:0000FA8E 0FA4D310                  SHLD    EBX,EDX,10H
+		// 0110:0000FA92 886D1D                    MOV     [EBP+1DH],CH
+		// 0110:0000FA95 66895518                  MOV     [EBP+18H],DX
+		// 0110:0000FA99 66895D14                  MOV     [EBP+14H],BX
+		// 0110:0000FA9D C3                        RET
+		return 0x52;
+	case TBIOS_V31L23A:
+		// 0110:000103B8 8A6F44                    MOV     CH,[EDI+44H]
+		// 0110:000103BB 8B5756                    MOV     EDX,[EDI+56H]
+		// 0110:000103BE 0FA4D310                  SHLD    EBX,EDX,10H
+		// 0110:000103C2 886D1D                    MOV     [EBP+1DH],CH
+		// 0110:000103C5 66895518                  MOV     [EBP+18H],DX
+		// 0110:000103C9 66895D14                  MOV     [EBP+14H],BX
+		// 0110:000103CD C3                        RET
+		return 0x56;
+	case TBIOS_V31L31_90:
+		// 0110:000103B8 8A6F44                    MOV     CH,[EDI+44H]
+		// 0110:000103BB 8B5756                    MOV     EDX,[EDI+56H]
+		// 0110:000103BE 0FA4D310                  SHLD    EBX,EDX,10H
+		// 0110:000103C2 886D1D                    MOV     [EBP+1DH],CH
+		// 0110:000103C5 66895518                  MOV     [EBP+18H],DX
+		// 0110:000103C9 66895D14                  MOV     [EBP+14H],BX
+		// 0110:000103CD C3                        RET
+		return 0x56;
+
+	// These versions store in TBIOS segment.
+	case TBIOS_V31L31_91:
+	case TBIOS_V31L31_92:
+	case TBIOS_V31L31_93:
+	case TBIOS_V31L35:
+		break;
+	}
+	return 0;
+}
+
 bool FMTownsCommon::GetMouseCoordinate(int &mx,int &my,unsigned int tbiosid) const
 {
 	// Windows 3.1 >>
+	// Actually FMT-3631 does not know where in the pattern is mouse cursor position, and it changes.
+	// The cursor shakes at the corner of the window.  Better to go with TGMOUSE.
+	// if(true==fmt3631.IsEnabled() && true==fmt3631.state.hwCursor.defined)
+	// {
+	// 	mx=fmt3631.state.hwCursor.X-32;
+	// 	my=fmt3631.state.hwCursor.Y-32;
+	// 	return true;
+	// }
 	if(true==crtc.state.highResCRTCEnabled && true==crtc.state.highResCrtcMouse.defined)
 	{
 		mx=crtc.state.highResCrtcMouse.X;
@@ -1036,24 +1109,24 @@ bool FMTownsCommon::GetMouseCoordinate(int &mx,int &my,unsigned int tbiosid) con
 		{
 		case TOWNS_APPSPECIFIC_ULTIMAUNDERWORLD:
 			{
-				auto debugStop=debugger.stop; // FetchWord may break due to MEMR.
+				auto debugStop=CheckDebugBreak(); // FetchWord may break due to MEMR.
 				mx=(int)mem.FetchWord(state.appSpecific_MousePtrX);
 				my=399-(int)mem.FetchWord(state.appSpecific_MousePtrY)*2;
-				debugger.stop=debugStop;
+				SetDebugBreakFlag(debugStop);
 			}
 			return true;
 		case TOWNS_APPSPECIFIC_RASHINBAN:
 		case TOWNS_APPSPECIFIC_WINGCOMMANDER1:
 			{
-				auto debugStop=debugger.stop; // FetchWord may break due to MEMR.
+				auto debugStop=CheckDebugBreak(); // FetchWord may break due to MEMR.
 				mx=(int)mem.FetchWord(state.appSpecific_MousePtrX);
 				my=(int)mem.FetchWord(state.appSpecific_MousePtrY);
-				debugger.stop=debugStop;
+				SetDebugBreakFlag(debugStop);
 			}
 			return true;
 		case TOWNS_APPSPECIFIC_WINGCOMMANDER2:
 			{
-				auto debugStop=debugger.stop; // FetchWord may break due to MEMR.
+				auto debugStop=CheckDebugBreak(); // FetchWord may break due to MEMR.
 				mx=(int)mem.FetchWord(state.appSpecific_MousePtrX);
 				my=(int)mem.FetchWord(state.appSpecific_MousePtrY);
 
@@ -1087,38 +1160,40 @@ bool FMTownsCommon::GetMouseCoordinate(int &mx,int &my,unsigned int tbiosid) con
 					}
 				}
 
-				debugger.stop=debugStop;
+				SetDebugBreakFlag(debugStop);
 			}
 			return true;
 		case TOWNS_APPSPECIFIC_STRIKECOMMANDER:
 			{
-				auto debugStop=debugger.stop; // FetchWord may break due to MEMR.
+				auto debugStop=CheckDebugBreak(); // FetchWord may break due to MEMR.
 				mx=(int)mem.FetchWord(state.appSpecific_MousePtrX)/2;
 				my=(int)mem.FetchWord(state.appSpecific_MousePtrY);
-				debugger.stop=debugStop;
+				SetDebugBreakFlag(debugStop);
 			}
 			return true;
 		case TOWNS_APPSPECIFIC_LEMMINGS:
 		case TOWNS_APPSPECIFIC_LEMMINGS2:
 			{
-				auto debugStop=debugger.stop; // FetchWord may break due to MEMR.
+				auto debugStop=CheckDebugBreak(); // FetchWord may break due to MEMR.
 				mx=(int)mem.FetchWord(state.appSpecific_MousePtrX);
 				my=(int)mem.FetchWord(state.appSpecific_MousePtrY);
-				debugger.stop=debugStop;
+				SetDebugBreakFlag(debugStop);
 			}
 			return true;
 		case TOWNS_APPSPECIFIC_BRANDISH:
 			{
+				auto debugStop=CheckDebugBreak(); // FetchWord may break due to MEMR.
 				mx=mem.FetchWord(0x30000+0x40E6);
 				my=mem.FetchWord(0x30000+0x40E8);
+				SetDebugBreakFlag(debugStop);
 			}
 			return true;
 		case TOWNS_APPSPECIFIC_OPERATIONWOLF:
 			{
-				auto debugStop=debugger.stop; // FetchWord may break due to MEMR.
+				auto debugStop=CheckDebugBreak(); // FetchWord may break due to MEMR.
 				mx=(int)mem.FetchWord(state.appSpecific_MousePtrX);
 				my=(int)mem.FetchWord(state.appSpecific_MousePtrY);
-				debugger.stop=debugStop;
+				SetDebugBreakFlag(debugStop);
 			}
 			return true;
 		case TOWNS_APPSPECIFIC_AMARANTH3:
@@ -1146,10 +1221,10 @@ bool FMTownsCommon::GetMouseCoordinate(int &mx,int &my,unsigned int tbiosid) con
 					if(signature[0]==mem.FetchDword(addr+0x44E) &&
 					   signature[1]==mem.FetchDword(addr+0x452))
 					{
-						auto debugStop=debugger.stop; // FetchWord may break due to MEMR.
+						auto debugStop=CheckDebugBreak(); // FetchWord may break due to MEMR.
 						mx=(int)mem.FetchWord(int(addr+0x44E)+physAddrOffset);
 						my=(int)mem.FetchWord(int(addr+0x44E)+physAddrOffset+2);
-						debugger.stop=debugStop;
+						SetDebugBreakFlag(debugStop);
 						return true;
 					}
 				}
@@ -1162,6 +1237,8 @@ bool FMTownsCommon::GetMouseCoordinate(int &mx,int &my,unsigned int tbiosid) con
 
 void FMTownsCommon::GetWingCommanderSetSpeedMaxSpeed(unsigned int &setSpeed,unsigned int &maxSpeed)
 {
+	auto debugStop=CheckDebugBreak(); // FetchWord may break due to MEMR.
 	setSpeed=mem.FetchByte(state.appSpecific_WC_setSpeedPtr);
 	maxSpeed=mem.FetchByte(state.appSpecific_WC_maxSpeedPtr);
+	SetDebugBreakFlag(debugStop);
 }

@@ -16,26 +16,27 @@ public:
 	class SavedESP
 	{
 	};
-	inline static void SaveESP(SavedESP &,uint8_t,uint32_t){}
+	inline static SavedESP SaveESP(uint8_t,uint32_t){SavedESP esp;return esp;} // Should emit zero code.
 	inline static void RestoreESPHighWord(uint8_t,uint32_t &,SavedESP){}
 	constexpr bool HandleExceptionAndRestoreESPIfAny(class i486DXCommon &,Memory &,uint32_t instNumBytes,SavedESP) const{return false;}
 
 	class SavedESPEBP
 	{
 	};
-	inline static void SaveESPEBP(SavedESPEBP &,uint8_t,uint32_t,uint32_t){}
+	inline static SavedESPEBP SaveESPEBP(uint8_t,uint32_t,uint32_t){SavedESPEBP saved;return saved;} // Should emit zero code.
 	constexpr bool HandleExceptionAndRestoreESPEBPIfAny(class i486DXCommon &,Memory &,uint32_t instNumBytes,SavedESPEBP) const{return false;}
 
 	class SavedECX
 	{
 	};
-	inline static void SaveECX(SavedECX &,uint32_t){}
+	inline static SavedECX SaveECX(uint32_t){SavedECX saved;return saved;} // Should emit zero code.
 	constexpr bool HandleExceptionAndRestoreECXIfAny(class i486DXCommon &,Memory &,uint32_t instNumBytes,const SavedECX) const{return false;}
 
 	class SavedCSEIP
 	{
 	};
-	inline static void SaveCSEIP(SavedCSEIP &,const class i486DXCommon &){}
+	inline static SavedCSEIP SaveCSEIP(const class i486DXCommon &){SavedCSEIP cseip;return cseip;} // Should emit zero code.
+	inline static void RestoreCSEIP(class i486DXCommon &,const SavedCSEIP &){}
 	inline static void RestoreCSEIPIfException(class i486DXCommon &,const SavedCSEIP &){}
 
 	inline static void Sync_CS_RPL_to_DPL(class i486DXCommon &){}
@@ -67,7 +68,7 @@ public:
 
 	inline bool CheckRETFtoOuterLevel(i486DXCommon &cpu,Memory &mem,uint32_t operandSize,uint32_t prevDPL,uint16_t imm16){return false;};
 
-	constexpr bool CheckExceptionInHighFidelityMode(const i486DXCommon &) const{return false;}
+	static inline bool CheckExceptionInHighFidelityMode(const i486DXCommon &) {return false;}
 
 	// LoadSegmentRegister
 	class LoadSegmentRegisterVariables
@@ -95,12 +96,12 @@ public:
 	inline static void SetSegmentRegisterAttribBytes(uint16_t &attribBytes,uint16_t newAttrib){};
 
 	// Protect EFLAGS IOPL bits.
-	class EFLAGS
+	class SavedEFLAGS
 	{
 	};
-	inline static void SaveEFLAGS(EFLAGS &,const i486DXCommon &cpu){};
-	inline static void RestoreIOPLBits(i486DXCommon &cpu,const EFLAGS &){};
-	inline static void RestoreIF(i486DXCommon &cpu,const EFLAGS &){};
+	inline static SavedEFLAGS SaveEFLAGS(const i486DXCommon &cpu){SavedEFLAGS saved;return saved;};
+	inline static void RestoreIOPLBits(i486DXCommon &cpu,const SavedEFLAGS &){};
+	inline static void RestoreIF(i486DXCommon &cpu,const SavedEFLAGS &){};
 
 	inline static void BeforeRunOneInstruction(const i486DXCommon &,const i486DXCommon::Instruction &inst,i486Debugger *debuggerPtr){};
 	inline static void OnHandleException(const i486DXCommon &,i486Debugger *debuggerPtr){};
@@ -110,6 +111,14 @@ public:
 	inline static bool SLDT_STR_LLDT_LTR_VERR_VERW_Cause_INT6_InRealModeVM86Mode(i486DXCommon &){return false;}
 
 	inline static void OnLock(i486DXCommon &){}
+
+	inline static void AdjustNewCSDPLonINT(i486DXCommon::SegmentRegister &newCS,uint16_t newCSDescType,uint16_t CPL){};
+
+	inline static bool CheckJumpToHigherPrivilege(i486DXCommon::SegmentRegister &newCS,SavedCSEIP &prevCSEIP){return false;}
+
+	inline static void MarkTaskRegisterBusy(i486DXCommon &,Memory &,uint16_t,bool){}
+
+	inline static bool CheckNestedTask(i486DXCommon &){return false;}
 };
 
 class i486DXDefaultFidelityOperation : public i486DXLowFidelityOperation
@@ -168,9 +177,11 @@ public:
 	public:
 		uint32_t ESP;
 	};
-	inline static void SaveESP(SavedESP &save,uint8_t,uint32_t ESP)
+	inline static SavedESP SaveESP(uint8_t,uint32_t ESP)
 	{
-		save.ESP=ESP;
+		SavedESP saved;
+		saved.ESP=ESP;
+		return saved;
 	}
 	inline void RestoreESPHighWord(uint8_t addressSize,uint32_t &ESP,SavedESP savedESP)
 	{
@@ -197,10 +208,12 @@ public:
 	public:
 		uint32_t ESP,EBP;
 	};
-	inline static void SaveESPEBP(SavedESPEBP &save,uint8_t,uint32_t ESP,uint32_t EBP)
+	inline static SavedESPEBP SaveESPEBP(uint8_t,uint32_t ESP,uint32_t EBP)
 	{
+		SavedESPEBP save;
 		save.ESP=ESP;
 		save.EBP=EBP;
+		return save;
 	}
 	inline static bool HandleExceptionAndRestoreESPEBPIfAny(i486DXFidelityLayer<THISCLASS> &cpu,Memory &mem,uint32_t instNumBytes,SavedESPEBP ESP)
 	{
@@ -220,9 +233,11 @@ public:
 	public:
 		uint32_t ECX;
 	};
-	inline static void SaveECX(SavedECX &save,uint32_t ECX)
+	inline static SavedECX SaveECX(uint32_t ECX)
 	{
+		SavedECX save;
 		save.ECX=ECX;
+		return save;
 	}
 	inline bool HandleExceptionAndRestoreECXIfAny(i486DXFidelityLayer<THISCLASS> &cpu,Memory &mem,uint32_t instNumBytes,const SavedECX ECX)
 	{
@@ -242,10 +257,17 @@ public:
 		i486DXCommon::SegmentRegister CS;
 		uint32_t EIP;
 	};
-	inline static void SaveCSEIP(SavedCSEIP &saved,const class i486DXCommon &cpu)
+	inline static SavedCSEIP SaveCSEIP(const class i486DXCommon &cpu)
 	{
+		SavedCSEIP saved;
 		saved.CS=cpu.state.CS();
 		saved.EIP=cpu.state.EIP;
+		return saved;
+	}
+	inline static void RestoreCSEIP(class i486DXCommon &cpu,const SavedCSEIP &saved)
+	{
+		cpu.state.CS()=saved.CS;
+		cpu.state.EIP=saved.EIP;
 	}
 	inline static void RestoreCSEIPIfException(class i486DXCommon &cpu,const SavedCSEIP &saved)
 	{
@@ -615,7 +637,7 @@ public:
 		}
 	}
 
-	inline static bool CheckExceptionInHighFidelityMode(const i486DXCommon &cpu)
+	static inline bool CheckExceptionInHighFidelityMode(const i486DXCommon &cpu)
 	{
 		return cpu.state.exception;
 	}
@@ -854,19 +876,18 @@ public:
 
 
 
-	class EFLAGS
+	class SavedEFLAGS
 	{
 	public:
 		uint32_t eflags;
 	};
-	inline static void SaveEFLAGS(EFLAGS &eflags,const i486DXCommon &cpu)
+	inline static SavedEFLAGS SaveEFLAGS(const i486DXCommon &cpu)
 	{
-		if(true!=cpu.IsInRealMode() && 0!=cpu.state.CS().DPL)
-		{
-			eflags.eflags=cpu.state.EFLAGS;
-		}
+		SavedEFLAGS eflags;
+		eflags.eflags=cpu.state.EFLAGS;
+		return eflags;
 	};
-	inline static void RestoreIOPLBits(i486DXCommon &cpu,const EFLAGS &eflags)
+	inline static void RestoreIOPLBits(i486DXCommon &cpu,const SavedEFLAGS &eflags)
 	{
 		if(true!=cpu.IsInRealMode() && 0!=cpu.state.CS().DPL)
 		{
@@ -874,7 +895,7 @@ public:
 			cpu.state.EFLAGS|=(eflags.eflags&i486DXCommon::EFLAGS_IOPL);
 		}
 	};
-	inline static void RestoreIF(i486DXCommon &cpu,const EFLAGS &eflags)
+	inline static void RestoreIF(i486DXCommon &cpu,const SavedEFLAGS &eflags)
 	{
 		if(true!=cpu.IsInRealMode() && cpu.GetIOPL()<cpu.state.CS().DPL)
 		{
@@ -930,6 +951,30 @@ public:
 	inline static void OnLock(i486DXCommon &cpu)
 	{
 		cpu.RaiseException(i486DXCommon::EXCEPTION_LOCK_MAYBE,0);
+	}
+
+	inline static void AdjustNewCSDPLonINT(i486DXCommon::SegmentRegister &newCS,uint16_t newCSDescType,uint16_t CPL)
+	{
+		// If INT from Ring 3, and if the new CS is a conforming CS, then new CS must stay CPL3.
+		if((i486DXCommon::SEGTYPE_CODE_CONFORMING_READABLE==newCSDescType || i486DXCommon::SEGTYPE_CODE_CONFORMING_EXECONLY==newCSDescType) && 3==CPL)
+		{
+			newCS.DPL=3;
+		}
+	}
+
+	inline static bool CheckJumpToHigherPrivilege(i486DXCommon::SegmentRegister &newCS,SavedCSEIP &prevCSEIP)
+	{
+		return newCS.DPL<prevCSEIP.CS.DPL;
+	}
+
+	inline static void MarkTaskRegisterBusy(i486DXFidelityLayer<THISCLASS> &cpu,Memory &mem,uint16_t selector,bool busy)
+	{
+		cpu.MarkTaskRegisterBusy(mem,selector,busy);
+	}
+
+	inline static bool CheckNestedTask(i486DXCommon &cpu)
+	{
+		return 0!=(cpu.state.EFLAGS&i486DXCommon::EFLAGS_NESTED) && 0==(cpu.state.EFLAGS&i486DXCommon::EFLAGS_VIRTUAL86);
 	}
 };
 

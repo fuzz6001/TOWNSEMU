@@ -180,7 +180,7 @@ unsigned char TownsGamePort::Port::Read(long long int townsTime)
 		switch(state)
 		{
 		case MOUSESTATE_XHIGH:
-			if(true==monitorMouse)
+			if(true==monitorMouse && (0!=mouseMotion.x() || 0!=mouseMotion.y()))
 			{
 				std::cout << "Motion " << mouseMotion.x() << " " << mouseMotion.y() << "\n";
 			}
@@ -719,9 +719,11 @@ void TownsGamePort::SetBootKeyCombination(unsigned int keyComb)
 {
 	if(BOOT_KEYCOMB_PAD_A==keyComb ||
 	   BOOT_KEYCOMB_PAD_B==keyComb ||
+	   BOOT_KEYCOMB_PAD_AB==keyComb ||
 	   BOOT_KEYCOMB_NONE==keyComb)
 	{
 		state.bootKeyComb=keyComb;
+		var.bootKeyReadCount=MAX_BOOTKEY_READ;
 	}
 }
 
@@ -789,6 +791,14 @@ void TownsGamePort::State::Reset(void)
 	switch(ioport)
 	{
 	case TOWNSIO_GAMEPORT_A_INPUT://        0x4D0,
+		if(0<var.bootKeyReadCount)
+		{
+			if(0==(--var.bootKeyReadCount))
+			{
+				state.bootKeyComb=BOOT_KEYCOMB_NONE;
+			}
+		}
+
 		if(BOOT_KEYCOMB_PAD_A==state.bootKeyComb)
 		{
 			return 0x2F;
@@ -796,6 +806,10 @@ void TownsGamePort::State::Reset(void)
 		else if(BOOT_KEYCOMB_PAD_B==state.bootKeyComb)
 		{
 			return 0x1F;
+		}
+		else if(BOOT_KEYCOMB_PAD_AB==state.bootKeyComb)
+		{
+			return 0x0F;
 		}
 		else if(TOWNS_APPSPECIFIC_ROCKETRANGER==townsPtr->state.appSpecificSetting && true==state.ports[0].run)
 		{

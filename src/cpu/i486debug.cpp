@@ -14,8 +14,10 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 << LICENSE */
 #include <iostream>
 #include <fstream>
+#include <stdlib.h>
 #include <stdint.h>
 
+#include "vmbase.h"
 #include "i486.h"
 #include "i486inst.h"
 #include "i486debug.h"
@@ -89,8 +91,9 @@ void i486Debugger::SpecialDebugInfo::IORead(i486Debugger &debugger,const i486DXC
 ////////////////////////////////////////////////////////////
 
 
-i486Debugger::i486Debugger()
+i486Debugger::i486Debugger(VMBase *vmPtr)
 {
+	this->vmPtr=vmPtr;
 	specialDebugInfo=new SpecialDebugInfo;
 	symTablePtr=new i486SymbolTable;
 	breakOnIORead.resize(i486DXCommon::I486_NUM_IOPORT);
@@ -136,7 +139,7 @@ const std::map <unsigned int,std::string> &i486Debugger::GetIOTable(void) const
 void i486Debugger::CleanUp(void)
 {
 	breakPoints.clear();
-	stop=false;
+	vmPtr->SetDebugBreakFlag(false);
 	ClearBreakOnINT();
 	monitorIO=false;
 	for(auto &b : monitorIOports)
@@ -161,6 +164,17 @@ void i486Debugger::CleanUp(void)
 	{
 		h=0;
 	}
+}
+void i486Debugger::SetLinearBreakPointRange(uint32_t minLinAddr,uint32_t maxLinAddr)
+{
+	linearBreakPointRange[0]=std::min(minLinAddr,maxLinAddr);
+	linearBreakPointRange[1]=std::max(minLinAddr,maxLinAddr);
+}
+
+void i486Debugger::ClearLinearBreakPointRange(void)
+{
+	linearBreakPointRange[0]=0x7fffffff;
+	linearBreakPointRange[1]=0;
 }
 void i486Debugger::AddBreakPoint(CS_EIP bp,BreakPointInfo info)
 {
@@ -332,7 +346,7 @@ void i486Debugger::BeforeRunOneInstruction(i486DXCommon &cpu,Memory &mem,InOut &
 
 				if(BRKPNT_FLAG_MONITOR_ONLY!=breakOrMonitorOnVxDCall)
 				{
-					stop=true;
+					vmPtr->SetDebugBreakFlag(true);
 					externalBreakReason=msg;
 				}
 				else
@@ -462,14 +476,14 @@ void i486Debugger::AfterRunOneInstruction(unsigned int clocksPassed,i486DXCommon
 	inInstruction=false;
 
 	specialDebugInfo->AfterRunOneInstruction(*this,clocksPassed,cpu,mem,io,inst);
-	if(true!=stop && true!=cpu.state.exception)
+	if(0==vmPtr->GetStopFlags() && true!=cpu.state.exception)
 	{
 		CheckForBreakPoints(cpu);
 		if(true==breakOnVM86Mode)
 		{
 			if(i486DXCommon::MODE_VM86!=prevMode && i486DXCommon::MODE_VM86==cpu.state.mode)
 			{
-				stop=true;
+				vmPtr->SetDebugBreakFlag(true);
 				externalBreakReason="Entered VM86 Mode";
 			}
 		}
@@ -477,7 +491,7 @@ void i486Debugger::AfterRunOneInstruction(unsigned int clocksPassed,i486DXCommon
 		{
 			if(i486DXCommon::MODE_REAL==prevMode && i486DXCommon::MODE_REAL!=cpu.state.mode)
 			{
-				stop=true;
+				vmPtr->SetDebugBreakFlag(true);
 				externalBreakReason="Entered Protected Mode";
 			}
 		}
@@ -485,7 +499,7 @@ void i486Debugger::AfterRunOneInstruction(unsigned int clocksPassed,i486DXCommon
 		{
 			if(i486DXCommon::MODE_REAL!=prevMode && i486DXCommon::MODE_REAL==cpu.state.mode)
 			{
-				stop=true;
+				vmPtr->SetDebugBreakFlag(true);
 				externalBreakReason="Entered Real Mode";
 			}
 		}
@@ -534,10 +548,18 @@ void i486Debugger::CheckForBreakPoints(i486DXCommon &cpu)
 	cseip.OFFSET=cpu.state.EIP;
 
 	{
+		auto linear=cpu.state.CS().baseLinearAddr+cpu.state.EIP;
+		if(linearBreakPointRange[0]<=linear && linear<=linearBreakPointRange[1])
+		{
+			vmPtr->SetDebugBreakFlag(true);
+		}
+	}
+
+	{
 		auto found=breakPoints.find(cseip);
 		if(found!=breakPoints.end())
 		{
-			stop=(0==(found->second.flags&BRKPNT_FLAG_DONT_STOP));
+			vmPtr->SetDebugBreakFlag(0==(found->second.flags&BRKPNT_FLAG_DONT_STOP));
 			found->second.SteppedOn();
 			if(0!=(found->second.flags&BRKPNT_FLAG_CAPTURE_WIN_APIENTRY))
 			{
@@ -557,11 +579,11 @@ void i486Debugger::CheckForBreakPoints(i486DXCommon &cpu)
 	}
 	if(breakOnCS[cseip.SEG])
 	{
-		stop=true;
+		vmPtr->SetDebugBreakFlag(true);
 	}
 	if(oneTimeBreakPoint==cseip)
 	{
-		stop=true;
+		vmPtr->SetDebugBreakFlag(true);
 		oneTimeBreakPoint.Nullify();
 	}
 }
@@ -576,6 +598,14 @@ void i486Debugger::HandleException(i486DXCommon &cpu,Memory &mem,unsigned int in
 		msg+=" to ";
 		msg+=cpputil::Uitox(cpu.state.ESP());
 		ExternalBreak(msg);
+	}
+	auto find=breakOnExceptionAt.find(prevCSEIPLog);
+	if(find!=breakOnExceptionAt.end())
+	{
+		ExternalBreak(
+			"Exception at "+cpputil::Ustox(prevCSEIPLog.SEG)+":"+cpputil::Uitox(prevCSEIPLog.OFFSET)
+		);
+		lastBreakPointInfo=find->second;
 	}
 }
 
@@ -629,6 +659,24 @@ void i486Debugger::ClearBreakOnINT(void)
 void i486Debugger::ClearBreakOnINT(unsigned int INTNum)
 {
 	breakOnINT[INTNum&(BreakOnINTCondition::NUM_INTERRUPTS-1)].cond=BreakOnINTCondition::COND_NEVER;
+}
+
+void i486Debugger::BreakOnExceptionAt(i486DXCommon::FarPointer cseip)
+{
+	breakOnExceptionAt[cseip]=BreakPointInfo();
+}
+void i486Debugger::ClearBreakOnExceptionAt(i486DXCommon::FarPointer cseip)
+{
+	auto found=breakOnExceptionAt.find(cseip);
+	if(breakOnExceptionAt.end()!=found)
+	{
+		breakOnExceptionAt.erase(found);
+	}
+}
+void i486Debugger::ClearBreakOnExceptionAt(void)
+{
+	std::map <i486DXCommon::FarPointer,BreakPointInfo> empty;
+	std::swap(breakOnExceptionAt,empty);
 }
 
 std::vector <std::string> i486Debugger::GetCallStackText(const i486DXCommon &cpu) const
@@ -768,14 +816,14 @@ std::vector <std::string> i486Debugger::GetCallStackText(const i486DXCommon &cpu
 
 void i486Debugger::ExternalBreak(const std::string &reason)
 {
-	stop=true;
+	vmPtr->SetDebugBreakFlag(true);
 	externalBreakReason=reason;
 	lastBreakPointInfo.Clear();
 }
 
 void i486Debugger::MonitorButDoNotStop(const std::string &reason)
 {
-	stop=true;
+	vmPtr->SetDebugBreakFlag(true); // Why true? VM main loop should break at least once to check if it really should pause, or unpause and go.
 	externalBreakReason=reason;
 	lastBreakPointInfo.Clear();
 	lastBreakPointInfo.flags|=BRKPNT_FLAG_MONITOR_ONLY;
@@ -783,7 +831,7 @@ void i486Debugger::MonitorButDoNotStop(const std::string &reason)
 
 void i486Debugger::ClearStopFlag(void)
 {
-	stop=false;
+	vmPtr->SetDebugBreakFlag(false);
 	externalBreakReason="";
 	additionalDisasm="";
 	lastBreakPointInfo.Clear();
@@ -1015,21 +1063,24 @@ void i486Debugger::IOWrite(const i486DXCommon &cpu,unsigned int ioport,unsigned 
 {
 	specialDebugInfo->IOWrite(*this,cpu,ioport,data,lengthInBytes);
 
+	std::string valueStr;
+	if(1==lengthInBytes)
+	{
+		valueStr=cpputil::Ubtox(data);
+	}
+	else if(2==lengthInBytes)
+	{
+		valueStr=cpputil::Ustox(data);
+	}
+	else
+	{
+		valueStr=cpputil::Uitox(data);
+	}
+
 	if(true==breakOnIOWrite[ioport&(i486DXCommon::I486_NUM_IOPORT-1)])
 	{
 		std::string msg;
-		if(4==lengthInBytes)
-		{
-			msg="IOWrite Port:"+cpputil::Uitox(ioport)+" Value:"+cpputil::Uitox(data);
-		}
-		else if(2==lengthInBytes)
-		{
-			msg="IOWrite Port:"+cpputil::Uitox(ioport)+" Value:"+cpputil::Ustox(data);
-		}
-		else
-		{
-			msg="IOWrite Port:"+cpputil::Uitox(ioport)+" Value:"+cpputil::Ubtox(data);
-		}
+		msg="IOWrite Port:"+cpputil::Uitox(ioport)+" Value:"+valueStr;
 		ExternalBreak(msg);
 		WriteLogFile(msg);
 	}
@@ -1041,19 +1092,7 @@ void i486Debugger::IOWrite(const i486DXCommon &cpu,unsigned int ioport,unsigned 
 			std::ostream &ofs=(0==i ? std::cout : logOfs);
 
 			ofs<< cpputil::Ustox(cpu.state.CS().value) << ":" << cpputil::Uitox(cpu.state.EIP) << " ";
-			ofs<< "Write IO" << (lengthInBytes<<3) << ":[" << cpputil::Ustox(ioport) << "] ";
-			if(4==lengthInBytes)
-			{
-				ofs<< cpputil::Uitox(data);;
-			}
-			else if(2==lengthInBytes)
-			{
-				ofs<< cpputil::Ustox(data);;
-			}
-			else
-			{
-				ofs<< cpputil::Ubtox(data);;
-			}
+			ofs<< "Write IO" << (lengthInBytes<<3) << ":[" << cpputil::Ustox(ioport) << "] " << valueStr;
 
 			auto iter=ioLabel.find(ioport);
 			if(ioLabel.end()!=iter)
@@ -1068,14 +1107,38 @@ void i486Debugger::IOWrite(const i486DXCommon &cpu,unsigned int ioport,unsigned 
 			}
 		}
 	}
+
+	if(true==powerOffOnIOW &&
+	   ioport==powerOffOnIOWPort &&
+	   (~0==powerOffOnIOWValue || data==powerOffOnIOWValue))
+	{
+		std::cout << "Power Off on IO Write\n";
+		std::cout << "Port=" << cpputil::Ustox(ioport) << "\n";
+		std::cout << "Data=" << valueStr << "\n";
+		exit(0);
+	}
 }
 void i486Debugger::IORead(const i486DXCommon &cpu,unsigned int ioport,unsigned int data,unsigned int lengthInBytes)
 {
 	specialDebugInfo->IORead(*this,cpu,ioport,data,lengthInBytes);
 
+	std::string valueStr;
+	if(1==lengthInBytes)
+	{
+		valueStr=cpputil::Ubtox(data);
+	}
+	else if(2==lengthInBytes)
+	{
+		valueStr=cpputil::Ustox(data);
+	}
+	else
+	{
+		valueStr=cpputil::Uitox(data);
+	}
+
 	if(true==breakOnIORead[ioport&(i486DXCommon::I486_NUM_IOPORT-1)])
 	{
-		std::string msg="IORead Port:"+cpputil::Uitox(ioport)+" Value:"+cpputil::Ubtox(data);
+		std::string msg="IORead Port:"+cpputil::Uitox(ioport)+" Value:"+valueStr;
 		ExternalBreak(msg);
 		WriteLogFile(msg);
 	}
@@ -1087,7 +1150,7 @@ void i486Debugger::IORead(const i486DXCommon &cpu,unsigned int ioport,unsigned i
 			std::ostream &ofs=(0==i ? std::cout : logOfs);
 
 			ofs << cpputil::Ustox(cpu.state.CS().value) << ":" << cpputil::Uitox(cpu.state.EIP) << " ";
-			ofs << "Read IO" << (lengthInBytes<<3) << ":[" << cpputil::Ustox(ioport) << "] " << cpputil::Ubtox(data);
+			ofs << "Read IO" << (lengthInBytes<<3) << ":[" << cpputil::Ustox(ioport) << "] " << valueStr;
 			auto iter=ioLabel.find(ioport);
 			if(ioLabel.end()!=iter)
 			{

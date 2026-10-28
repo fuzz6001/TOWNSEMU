@@ -28,6 +28,33 @@ private:
 public:
 	class FindContext;
 
+	class AutoFindContext
+	{
+	private:
+		AutoFindContext(const AutoFindContext &);
+		AutoFindContext &operator=(const AutoFindContext &);
+
+		FindContext *ctx=nullptr;
+	public:
+		AutoFindContext()
+		{
+			ctx=FileSys::CreateFindContext();
+		}
+		~AutoFindContext()
+		{
+			if(nullptr!=ctx)
+			{
+				FileSys::DeleteFindContext(ctx);
+				ctx=nullptr;
+			}
+		}
+		FindContext *operator*(void) const
+		{
+			return ctx;
+		}
+	};
+
+	bool monitor=false;
 	bool linked=false;
 	std::string hostPath;
 
@@ -101,7 +128,7 @@ public:
 
 		subPath is in the Shift-JIS encoding.
 	*/
-	int FindFirst(DirectoryEntry &ent,unsigned int PSP,const std::string &subPath);
+	int FindFirst(DirectoryEntry &ent,unsigned int PSP,std::string subPath);
 
 	DirectoryEntry FindNext(int findStructIdx);
 
@@ -135,9 +162,9 @@ public:
 
 		subPath is in the Shift-JIS encoding.
 	*/
-	DirectoryEntry FindFirst(std::string subPath,FindContext *find);
+	DirectoryEntry FindFirst(std::string subPath,FindContext *find) const;
 
-	DirectoryEntry FindNext(FindContext *find);
+	DirectoryEntry FindNext(FindContext *find) const;
 
 	/*! Returns file attribute in directory entry.
 	    If file not found, endOfDir member will be true.
@@ -162,7 +189,9 @@ public:
 	public:
 		unsigned int mode=0;
 		unsigned int PSP=0;
+		unsigned int DOSSFTSEG,DOSSFTOFF;
 		std::fstream fp;
+		std::string subPath;
 		bool IsOpen(void) const;
 		const uint32_t GetFileSize(void); // Can't be const.  seekg is a modifier.
 		const uint32_t GetFilePointer(void); // Can't be const.  tellg is a modifier.  Seriously?
@@ -179,9 +208,9 @@ public:
 	    subPath is relative to the virtual drive in the VM,
 	    relative to the shared directory in the host.
 	*/
-	int OpenExistingFile(unsigned int PSP,std::string subPath,unsigned int openMode);
-	int OpenFileNotTruncate(unsigned int PSP,std::string subPath,unsigned int openMode);
-	int OpenFileTruncate(unsigned int PSP,std::string subPath,unsigned int openMode);
+	int OpenExistingFile(unsigned int PSP,std::string subPath,unsigned int openMode,uint16_t DOSSFTSEG,uint16_t DOSSFTOFF);
+	int OpenFileNotTruncate(unsigned int PSP,std::string subPath,unsigned int openMode,uint16_t DOSSFTSEG,uint16_t DOSSFTOFF);
+	int OpenFileTruncate(unsigned int PSP,std::string subPath,unsigned int openMode,uint16_t DOSSFTSEG,uint16_t DOSSFTOFF);
 
 	bool CheckFileExist(std::string subPath);
 
@@ -199,6 +228,13 @@ public:
 	/*!
 	*/
 	bool RenameSubPath(std::string subPathFrom,std::string subPathTo);
+
+	/*!
+	*/
+	bool SetSubPathModifiedDateTime(
+		std::string subPath,
+		unsigned int year,unsigned int month,unsigned int date,
+		unsigned int hour,unsigned int min,unsigned int sec);
 
 	/*!
 	*/
@@ -231,6 +267,10 @@ public:
 	static bool Chdir(std::string str);
 	static bool Mkdir(std::string str);
 	static bool Rmdir(std::string str);
+	static bool SetModifiedDateTime(
+		std::string subPath,
+		unsigned int year,unsigned int month,unsigned int date,
+		unsigned int hour,unsigned int min,unsigned int sec);
 
 	/*! Template="FILENAMEEXT" 11-letter format
 	*/
@@ -243,6 +283,10 @@ public:
 	static bool DOSAttrMatch(unsigned int sAttr,unsigned int fAttr);
 
 	std::string MakeHostPath(const std::string &subPath) const;
+
+	bool AdjustSubPathForLongFileName(std::string &subPath) const;
+
+	bool MatchLongFileNameToShortFileName(std::string longName,std::string shortName) const;
 };
 
 

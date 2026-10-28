@@ -27,6 +27,20 @@ void TownsTgDrv::State::Reset(void)
 {
 }
 
+void TownsTgDrv::SetMonitor(bool monitor)
+{
+	this->monitor=monitor;
+	for(auto &d : sharedDir)
+	{
+		d.monitor=monitor;
+	}
+}
+
+bool TownsTgDrv::GetMonitor(void) const
+{
+	return monitor;
+}
+
 TownsTgDrv::TownsTgDrv(class FMTownsCommon *townsPtr) : Device(townsPtr)
 {
 	this->townsPtr=townsPtr;
@@ -303,7 +317,17 @@ bool TownsTgDrv::Int2F_1106_CloseRemoteFile(void)
 		   hostSFTIdx<FileSys::MAX_NUM_OPEN_FILE &&
 		   true==sharedDir[sharedDirIdx].sft[hostSFTIdx].IsOpen())
 		{
+			auto &sft=sharedDir[sharedDirIdx].sft[hostSFTIdx];
+			auto hostFName=sft.fName;
+			auto mode=sft.mode;
+
 			auto refCount=FetchSFTReferenceCount(townsPtr->CPU().state.ES(),townsPtr->CPU().state.DI());
+
+			if(true==monitor)
+			{
+				std::cout << "Close " << sft.subPath << " " << refCount;
+			}
+
 			if(refCount<=1)
 			{
 				sharedDir[sharedDirIdx].CloseFile(hostSFTIdx);
@@ -313,6 +337,35 @@ bool TownsTgDrv::Int2F_1106_CloseRemoteFile(void)
 			{
 				--refCount;
 			}
+
+			if(true==monitor)
+			{
+				std::cout << "-> " << refCount << "\n";
+			}
+
+			uint32_t dosTime=FetchDOSDateTimeFromSFT(townsPtr->CPU().state.ES(),townsPtr->CPU().state.DI());
+			uint32_t dosDate=(dosTime>>16);
+			dosTime&=0xFFFF;
+
+			uint32_t humanYear=1980+(dosDate>>9);
+			uint32_t humanMonth=(dosDate>>5)&0x0F;
+			uint32_t humanDate=(dosDate&0x1F);
+			uint32_t humanHour=(dosTime>>11);
+			uint32_t humanMin=(dosTime>>5)&0x3F;
+			uint32_t humanSec=(dosTime&0x1F)*2;
+			// Actually do it only if it was overwritten.
+			if(0 && (FileSys::OPENMODE_WRITE==mode || FileSys::OPENMODE_RW==mode))
+			{
+				sharedDir[sharedDirIdx].SetSubPathModifiedDateTime(
+					hostFName,
+					humanYear,humanMonth,humanDate,
+					humanHour,humanMin,humanSec);
+			}
+			if(true==monitor)
+			{
+				std::cout << "Date/Time " << humanYear << "/" << humanMonth << "/" << humanDate << " " << humanHour << ":" << humanMin <<":" << humanSec <<"\n";
+			}
+
 			townsPtr->CPU().RedirectStoreWord(
 				townsPtr->mem,
 				townsPtr->CPU().state.CS().addressSize,
@@ -558,9 +611,34 @@ bool TownsTgDrv::Int2F_110F_GetFileAttrib(void)
 	{
 		auto subPath=DropDriveLetter(fName);
 
+		if(true==monitor)
+		{
+			std::cout << "SubPath=" << subPath << "\n";
+		}
+
+		// Windows 95 somehow asks attributes of the root directory.
+		if(""==subPath)
+		{
+			if(true==monitor)
+			{
+				std::cout << "Root directory\n";
+			}
+			ReturnAX(TOWNS_DOS_DIRENT_ATTR_DIRECTORY);
+			ReturnBX(0); // High word of the file length
+			townsPtr->CPU().SetDI(0); // Low word of the file length
+			ReturnCX(0);
+			ReturnDX(0);
+			townsPtr->CPU().SetCF(false);
+			return true; // Yes, it's my drive.
+		}
+
 		auto invalidErr=CheckFileName(fName);
 		if(TOWNS_DOSERR_NO_ERROR!=invalidErr)
 		{
+			if(true==monitor)
+			{
+				std::cout << "DOS ERR " << invalidErr << "\n";
+			}
 			ReturnAX(invalidErr);
 			townsPtr->CPU().SetCF(true);
 			return true; // Yes it's my drive.
@@ -578,6 +656,10 @@ bool TownsTgDrv::Int2F_110F_GetFileAttrib(void)
 		}
 		else
 		{
+			if(true==monitor)
+			{
+				std::cout << "File Not Found.\n";
+			}
 			ReturnAX(TOWNS_DOSERR_FILE_NOT_FOUND);
 			townsPtr->CPU().SetCF(true);
 		}
@@ -744,7 +826,7 @@ bool TownsTgDrv::Int2F_1116_OpenExistingFile(void)
 		auto mode=FetchStackParam0();
 		if(true==monitor)
 		{
-			std::cout << cpputil::Ustox(mode) << std::endl;
+			std::cout << cpputil::Ustox(mode) << " " << fName << "\n";
 		}
 
 		auto invalidErr=CheckFileName(fName);
@@ -766,10 +848,12 @@ bool TownsTgDrv::Int2F_1116_OpenExistingFile(void)
 		{
 			mode=FileSys::OPENMODE_RW;
 		}
-		auto hostSFTIdx=sharedDir[sharedDirIdx].OpenExistingFile(FetchPSP(),subPath,mode);
+		auto &ES=townsPtr->CPU().state.ES();
+		auto DI=townsPtr->CPU().state.DI();
+		auto hostSFTIdx=sharedDir[sharedDirIdx].OpenExistingFile(FetchPSP(),subPath,mode,ES.value,DI);
 		if(0<=hostSFTIdx)
 		{
-			MakeVMSFT(townsPtr->CPU().state.ES(),townsPtr->CPU().state.DI(),driveLetter,hostSFTIdx,sharedDir[sharedDirIdx].sft[hostSFTIdx]);
+			MakeVMSFT(ES,DI,driveLetter,hostSFTIdx,sharedDir[sharedDirIdx].sft[hostSFTIdx]);
 			townsPtr->CPU().SetCF(false);
 		}
 		else
@@ -803,16 +887,18 @@ bool TownsTgDrv::Int2F_1117_CreateOrTruncate(void)
 
 		if(true==monitor)
 		{
-			std::cout << cpputil::Ustox(mode) << std::endl;
+			std::cout << cpputil::Ustox(mode) << " " << fName << "\n";
 		}
 
 		// Cannot figure the meaning of high-byte of mode.
 		//   0000=Normal Create and 0100=Truncate?  What's the difference?
 
-		auto hostSFTIdx=sharedDir[sharedDirIdx].OpenFileTruncate(FetchPSP(),subPath,FileSys::OPENMODE_RW);
+		auto &ES=townsPtr->CPU().state.ES();
+		auto DI=townsPtr->CPU().state.DI();
+		auto hostSFTIdx=sharedDir[sharedDirIdx].OpenFileTruncate(FetchPSP(),subPath,FileSys::OPENMODE_RW,ES.value,DI);
 		if(0<=hostSFTIdx)
 		{
-			MakeVMSFT(townsPtr->CPU().state.ES(),townsPtr->CPU().state.DI(),driveLetter,hostSFTIdx,sharedDir[sharedDirIdx].sft[hostSFTIdx]);
+			MakeVMSFT(ES,DI,driveLetter,hostSFTIdx,sharedDir[sharedDirIdx].sft[hostSFTIdx]);
 			townsPtr->CPU().SetCF(false);
 		}
 
@@ -1003,6 +1089,27 @@ bool TownsTgDrv::Int2F_111D_CloseAll(void)
 	auto PSP=FetchPSP();
 	for(auto &fs : sharedDir)
 	{
+		for(auto &sft : fs.sft)
+		{
+			if(true==sft.fp.is_open() && PSP==sft.PSP)
+			{
+				if(true==monitor)
+				{
+					std::cout << "Close " << sft.subPath << "\n";
+				}
+				i486DXCommon::SegmentRegister ES;
+				townsPtr->CPU().DebugLoadSegmentRegister(ES,
+					sft.DOSSFTSEG,
+					townsPtr->mem,
+					townsPtr->CPU().state.mode);
+				townsPtr->CPU().RedirectStoreWord(
+				    townsPtr->mem,
+				    townsPtr->CPU().state.CS().addressSize,
+				    ES,
+				    sft.DOSSFTOFF,
+				    0);
+			}
+		}
 		fs.CloseAllForPSP(PSP);
 	}
 	return false; // Must continue to the next INT 2F device.  Don't take the ownership.
@@ -1035,6 +1142,8 @@ bool TownsTgDrv::Int2F_112E_ExtendedOpenOrCreate(void)
 	if(0<=sharedDirIdx)
 	{
 		townsPtr->CPU().SetCF(true); // Tentative
+		auto &ES=townsPtr->CPU().state.ES();
+		auto DI=townsPtr->CPU().state.DI();
 
 		// This function is not supposed to be called from DOS 3.x
 
@@ -1107,7 +1216,7 @@ bool TownsTgDrv::Int2F_112E_ExtendedOpenOrCreate(void)
 			}
 			else if(0x10==(openAction&0xF0))
 			{
-				hostSFTIdx=sharedDir[sharedDirIdx].OpenFileNotTruncate(FetchPSP(),subPath,openMode&7);
+				hostSFTIdx=sharedDir[sharedDirIdx].OpenFileNotTruncate(FetchPSP(),subPath,openMode&7,ES.value,DI);
 				CX=2;
 			}
 			else
@@ -1130,12 +1239,12 @@ bool TownsTgDrv::Int2F_112E_ExtendedOpenOrCreate(void)
 			}
 			else if(1==(openAction&0x0F))
 			{
-				hostSFTIdx=sharedDir[sharedDirIdx].OpenExistingFile(FetchPSP(),subPath,openMode&7);
+				hostSFTIdx=sharedDir[sharedDirIdx].OpenExistingFile(FetchPSP(),subPath,openMode&7,ES.value,DI);
 				CX=1;
 			}
 			else if(2==(openAction&0x0F))
 			{
-				hostSFTIdx=sharedDir[sharedDirIdx].OpenFileTruncate(FetchPSP(),subPath,openMode&7);
+				hostSFTIdx=sharedDir[sharedDirIdx].OpenFileTruncate(FetchPSP(),subPath,openMode&7,ES.value,DI);
 				CX=3;
 			}
 			else
@@ -1147,7 +1256,7 @@ bool TownsTgDrv::Int2F_112E_ExtendedOpenOrCreate(void)
 
 		if(0<=hostSFTIdx)
 		{
-			MakeVMSFT(townsPtr->CPU().state.ES(),townsPtr->CPU().state.DI(),driveLetter,hostSFTIdx,sharedDir[sharedDirIdx].sft[hostSFTIdx]);
+			MakeVMSFT(ES,DI,driveLetter,hostSFTIdx,sharedDir[sharedDirIdx].sft[hostSFTIdx]);
 			ReturnCX(CX);
 			townsPtr->CPU().SetCF(false);
 		}
@@ -1343,7 +1452,7 @@ void TownsTgDrv::MakeVMSFT(const class i486DXCommon::SegmentRegister &seg,uint32
 		cpu.RedirectStoreByte(mem,CS.addressSize,seg,offset+0x20+i,eleven[i]);
 	}
 
-	cpu.RedirectStoreByte(mem,CS.addressSize,seg,offset+0x31,FetchPSP());
+	cpu.RedirectStoreWord(mem,CS.addressSize,seg,offset+0x31,FetchPSP());
 }
 void TownsTgDrv::MakeDOSDirEnt(uint32_t DTABuffer,const FileSys::DirectoryEntry &dirent)
 {
@@ -1399,6 +1508,14 @@ unsigned int TownsTgDrv::FetchDeviceInfoFromSFT(const class i486DXCommon::Segmen
 		townsPtr->CPU().state.CS().addressSize,
 		seg,
 		offset+0x05,
+		townsPtr->mem);
+}
+uint32_t TownsTgDrv::FetchDOSDateTimeFromSFT(const class i486DXCommon::SegmentRegister &seg,uint32_t offset) const
+{
+	return townsPtr->CPU().RedirectFetchDword(
+		townsPtr->CPU().state.CS().addressSize,
+		seg,
+		offset+0x0D,
 		townsPtr->mem);
 }
 std::string TownsTgDrv::FetchCString(uint32_t physAddr) const
@@ -1950,6 +2067,12 @@ std::string TownsTgDrv::FullPathToSubDir(std::string fn) const
 		// Q: format
 		i0=2;
 	}
+
+	if('/'==fn[i0] || '\\'==fn[i0])
+	{
+		++i0;
+	}
+
 	// Assume after last slash is find template.
 	int lastSlash=0;
 	for(int i=i0; i<fn.size(); ++i)

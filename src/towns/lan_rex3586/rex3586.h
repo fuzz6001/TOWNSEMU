@@ -22,18 +22,21 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "device.h"
 #include "cheapmath.h"
+#include "virtual_network.h"
+
 
 /* From the real REX3586.  ROM (IO 7010h) returns the following bits.  Low-bit first.
 
-First 20 bits:  0xFFFF0
-Next 40 bits: 0x?????????? (Mac address)
-Next 16 bits: 0xA200
+First 4 bits: 0
+Next 16 bits:  0xFFFF
+Next 48 bits: 0x?????????? (Mac address)
+Next  8 bits: 0xA2
 Next 152 bits:  All 1
 Next 24 bits: 0x4C414E ("LAN")
 Last 4 bits: All 0
 */
 
-class RatocREX3586 : public Device
+class RatocREX3586 : public Device, public VirtualNetwork::PacketReceiver
 {
 public:
 	enum
@@ -42,22 +45,93 @@ public:
 		NUM_REGS=0x20,
 	};
 
+	enum
+	{
+		TXSTATE_TXDONE=0x80,
+		TXSTATE_NETBUSY=0x40,
+		TXSTATE_TXPKTRCD=0x20,
+		TXSTATE_CRLOST=0x10,
+		TXSTATE_JABBER=0x08,
+		TXSTATE_COL=0x04,
+		TXSTATE_COL16=0x02,
+
+		RXSTATE_RXPKT=0x80,
+		RXSTATE_BUS_TS_ERR=0x40,
+		RXSTATE_DMA_EOP=0x20,
+		RXSTATE_RMT_9900H=0x10,
+		RXSTATE_SHORT_PKT=0x08,
+		RXSTATE_ALIGN_ERR=0x04,
+		RXSTATE_CRC_ERR=0x02,
+		RXSTATE_OVERFLOW=0x01,
+	};
+
 	class State
 	{
 	public:
+		bool enabled=false;
+		unsigned int ROMReadPtr=0;
 		unsigned char regs[NUM_REG_BANKS][NUM_REGS];
+		uint64_t MAC=0x00C0D0350582LL; // Is Windows 95 driver assuming MAC starts with 00C0D0 or 00803D?
+		// 0x464C59494E47; // "FLYING"
+		uint8_t config[2]={0,0};
+		bool TXIntEN=false,RXIntEN=false;
+		uint8_t INTNum=4; // 4 by REX3586.COM,  10 by Linux driver.  Apparently controlled by 7010H
+
+		uint8_t txState=0,rxState=0;
+		
+		unsigned int GetCurrentRegisterBank(void) const // Apparently Config 1 Bits 2-3 are the bank.
+		{
+			return (config[1]>>2)&3;
+		}
+
+		std::vector <uint8_t> TXPacket,RXPacket;
 	};
 	State state;
+
+	class Variable
+	{
+	public:
+		bool monitorTxPacket=true;
+		bool monitorRxPacket=true;
+	};
+	Variable var;
+
+	VirtualNetwork net;
+	class RealNetwork *realNet;
 
 	virtual const char *DeviceName(void) const{return "REX3586";}
 
 	RatocREX3586(class FMTownsCommon *ptr);
+	~RatocREX3586();
+
+	void StartRealNetwork(void);
+
+	inline void Polling(void)
+	{
+		if(true==state.enabled)
+		{
+			RealPolling();
+		}
+	}
+
+	void RealPolling(void);
+
+	void UpdatePIC(void);
+
+	void ReceivePacket(size_t len,const uint8_t data[]) override;
+	bool RxReady(void) const override;
+	uint64_t GetMACAddress(void) const override;
 
 	void PowerOn(void) override;
 	void Reset(void) override;
+	void DisconnectAll(void);
+
+	std::vector <std::string> GetStatusText(void) const;
 
 	void IOWriteByte(unsigned int ioport,unsigned int data) override;
 	unsigned int IOReadByte(unsigned int ioport) override;
+
+	unsigned int IOReadWord(unsigned int ioport) override;
 
 	uint32_t SerializeVersion(void) const override;
 	void SpecificSerialize(std::vector <unsigned char> &data,std::string stateFName) const override;

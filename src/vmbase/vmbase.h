@@ -27,8 +27,16 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 class VMBase
 {
+public:
+	enum
+	{
+		STOP_NONE=0,
+		STOP_ABORT=1,
+		STOP_DEBUG_BREAK=2,
+	};
+
 private:
-	mutable bool vmAbort=false;
+	mutable unsigned char stopFlags=0;
 
 protected:
 	/*! Device0 is a dummy device.  Always at allDevices[0].
@@ -58,13 +66,24 @@ public:
 	void CacheDeviceIndex(void);
 
 	virtual void Abort(std::string devName,std::string abortReason);
-
 	inline bool CheckAbort(void) const
 	{
-		return vmAbort;
+		return (stopFlags & STOP_ABORT);
 	}
-
 	void ClearAbortFlag(void);
+
+	void DebugBreak(void) const; // Stopflags is mutable.
+	void SetDebugBreakFlag(bool flag) const; // For smoother transition from stop=true/false.  Stopflags is mutable.
+	inline bool CheckDebugBreak(void) const
+	{
+		return (stopFlags & STOP_DEBUG_BREAK);
+	}
+	void ClearDebugBreakFlag(void) const; // Stopflags is mutable.
+
+	inline unsigned char GetStopFlags(void) const
+	{
+		return stopFlags;
+	}
 
 	std::vector <std::string> GetScheduledTasksText(void) const;
 };

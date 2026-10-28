@@ -33,6 +33,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include "filesys.h"
 #include "miscutil.h"
 #include "townslineparser.h"
+#include "townsmap.h"
 
 
 
@@ -45,8 +46,10 @@ TownsCommandInterpreter::TownsCommandInterpreter()
 	primaryCmdMap["H"]=CMD_HELP;
 	primaryCmdMap["QUIT"]=CMD_QUIT;
 	primaryCmdMap["Q"]=CMD_QUIT;
+	primaryCmdMap["POFF"]=CMD_QUIT;
 	primaryCmdMap["FORCEQUIT"]=CMD_FORCE_QUIT;
 	primaryCmdMap["RESET"]=CMD_RESET;
+	primaryCmdMap["REIPL"]=CMD_RESET;
 	primaryCmdMap["?"]=CMD_HELP;
 	primaryCmdMap["RUN"]=CMD_RUN;
 	primaryCmdMap["PAUSE"]=CMD_PAUSE;
@@ -165,6 +168,7 @@ TownsCommandInterpreter::TownsCommandInterpreter()
 
 	primaryCmdMap["CRTCPAGE"]=CMD_CRTC_PAGE;
 	primaryCmdMap["CRTCSWAPFMR"]=CMD_CRTC_SWAP_FMRGVRAMPAGE;
+	primaryCmdMap["CRTCVRAMOFFSET"]=CMD_CRTC_VRAMOFFSET;
 	primaryCmdMap["CMOSLOAD"]=CMD_CMOSLOAD;
 	primaryCmdMap["CMOSSAVE"]=CMD_CMOSSAVE;
 	primaryCmdMap["CDLOAD"]=CMD_CDLOAD;
@@ -205,6 +209,12 @@ TownsCommandInterpreter::TownsCommandInterpreter()
 	primaryCmdMap["XMODEM1KTOVM"]=CMD_XMODEM1K_TO_VM;
 	primaryCmdMap["XMODEMFROMVM"]=CMD_XMODEM_FROM_VM;
 	primaryCmdMap["XMODEMCRCFROMVM"]=CMD_XMODEMCRC_FROM_VM;
+
+	primaryCmdMap["XMCLR"]=CMD_XMODEM_CLEAR;
+	primaryCmdMap["XMSEND"]=CMD_XMODEM_TO_VM;
+	primaryCmdMap["XM1KSEND"]=CMD_XMODEM1K_TO_VM;
+	primaryCmdMap["XMRECV"]=CMD_XMODEM_FROM_VM;
+	primaryCmdMap["XMCRCRECV"]=CMD_XMODEMCRC_FROM_VM;
 
 	primaryCmdMap["RSTCP"]=CMD_RS232C_TO_TCP;
 	primaryCmdMap["DRSTCP"]=CMD_DISCONNECT_TCP;
@@ -282,6 +292,15 @@ TownsCommandInterpreter::TownsCommandInterpreter()
 	featureMap["TGDRVMON"]=ENABLE_TGDRV_MONITOR;
 	featureMap["MOUSEMON"]=ENABLE_MOUSE_MONITOR;
 	featureMap["DIFFMOUSE"]=ENABLE_DIFFERENTIAL_MOUSE_INTEGRATION;
+	featureMap["DIRTYPE"]=ENABLE_DIRECT_TYPE_MODE;
+	featureMap["DIRECTTYPE"]=ENABLE_DIRECT_TYPE_MODE;
+	featureMap["CONSOUT"]=ENABLE_CONSOLE_STEAL;
+	featureMap["CONSSTEAL"]=ENABLE_CONSOLE_STEAL;
+	featureMap["IOLOG"]=ENABLE_IOLOG;
+	featureMap["FMT3631MON"]=ENABLE_FMT3631MON;
+	featureMap["FMT3632MON"]=ENABLE_FMT3631MON;
+	featureMap["FMT3631SNEAK"]=ENABLE_FMT3631SNEAK;
+	featureMap["FMT3632SNEAK"]=ENABLE_FMT3631SNEAK;
 
 	dumpableMap["CALLSTACK"]=DUMP_CALLSTACK;
 	dumpableMap["CST"]=DUMP_CALLSTACK;
@@ -339,6 +358,16 @@ TownsCommandInterpreter::TownsCommandInterpreter()
 	dumpableMap["HIRESPCM"]=DUMP_HIGHRES_PCM;
 	dumpableMap["SAVESTATEM"]=DUMP_SAVESTATEM;
 	dumpableMap["TGDRV"]=DUMP_TGDRV;
+	dumpableMap["IO"]=DUMP_IOLIST;
+	dumpableMap["IOLIST"]=DUMP_IOLIST;
+	dumpableMap["NET"]=DUMP_LAN;
+	dumpableMap["LAN"]=DUMP_LAN;
+	dumpableMap["IOLOG"]=DUMP_IOLOG;
+	dumpableMap["FMT3631"]=DUMP_FMT3631;
+	dumpableMap["FMT-3631"]=DUMP_FMT3631;
+	dumpableMap["FMT3632"]=DUMP_FMT3631;
+	dumpableMap["FMT-3632"]=DUMP_FMT3631;
+	dumpableMap["FMT3631MORE"]=DUMP_FMT3631MORE;
 
 
 	breakEventMap["ICW1"]=   BREAK_ON_PIC_IWC1;
@@ -350,6 +379,8 @@ TownsCommandInterpreter::TownsCommandInterpreter()
 	breakEventMap["FDCREADADR"]=BREAK_ON_FDC_READADDRESS;
 	breakEventMap["FDCREADADDR"]=BREAK_ON_FDC_READADDRESS;
 	breakEventMap["INT"]=    BREAK_ON_INT;
+	breakEventMap["EXCEPTIONAT"]=BREAK_ON_EXCEPTION_AT;
+	breakEventMap["EXAT"]=BREAK_ON_EXCEPTION_AT;
 	breakEventMap["FOPEN"]=  BREAK_ON_FOPEN;
 	breakEventMap["RDCVRAM"]=BREAK_ON_CVRAM_READ;
 	breakEventMap["WRCVRAM"]=BREAK_ON_CVRAM_WRITE;
@@ -379,6 +410,8 @@ TownsCommandInterpreter::TownsCommandInterpreter()
 	breakEventMap["VM86MODE"]=BREAK_ON_VM86_MODE;
 	breakEventMap["VXDCALL"]=BREAK_ON_VXD_CALL;
 	breakEventMap["CST"]=BREAK_ON_CALLSTACK_DEPTH;
+	breakEventMap["FMT3631UNSUP"]=BREAK_ON_UNSUPPORTED_FMT3631CMD;
+	breakEventMap["FMT3632UNSUP"]=BREAK_ON_UNSUPPORTED_FMT3631CMD;
 }
 
 void TownsCommandInterpreter::PrintHelp(void) const
@@ -389,7 +422,9 @@ void TownsCommandInterpreter::PrintHelp(void) const
 	std::cout << "QUIT|Q" << std::endl;
 	std::cout << "  Quit." << std::endl;
 	std::cout << "RESET" << std::endl;
+	std::cout << "RESET key-combination\n";
 	std::cout << "  Reset the virtual machine." << std::endl;
+	std::cout << "  Can specify boot key combination CD,F0,F1,F2,F3,H0,H1,H2,H3,H4,ICM,DEBUG,PADA,PADB, or PADAB.\n";
 	std::cout << "RUN|RUN EIP|RUN CS:EIP" << std::endl;
 	std::cout << "  Run.  Can specify temporary break point." << std::endl;
 	std::cout << "FREQ frequency_in_MHz" << std::endl;
@@ -447,15 +482,22 @@ void TownsCommandInterpreter::PrintHelp(void) const
 	std::cout << "  Disconnect RS232C (COM0) to TCP/IP forwading." << std::endl;
 
 	std::cout << "XMODEMTOVM filename" << std::endl;
+	std::cout << "XMSEND filename\n";
 	std::cout << "  File transfer to the VM with XMODEM.  Type this command first," << std::endl;
 	std::cout << "  then start XMODEM in FM TOWNS application." << std::endl;
+	std::cout << "  You can add -COM0, -COM1, ..., -COM4 to specify the port number after the filename\n";
 	std::cout << "XMODEMFROMVM filename" << std::endl;
+	std::cout << "XMRECV filename\n";
 	std::cout << "  File transfer from the VM with XMODEM (CheckSum).  Start XMODEM in FM TOWNS application," << std::endl;
 	std::cout << "  and then type this command." << std::endl;
+	std::cout << "  You can add -COM0, -COM1, ..., -COM4 to specify the port number after the filename\n";
 	std::cout << "XMODEMCRCFROMVM filename" << std::endl;
+	std::cout << "XMCRCRECV filename\n";
 	std::cout << "  File transfer from the VM with XMODEM (CRC).  Start XMODEM in FM TOWNS application," << std::endl;
 	std::cout << "  and then type this command." << std::endl;
+	std::cout << "  You can add -COM0, -COM1, ..., -COM4 to specify the port number after the filename\n";
 	std::cout << "XMODEMCLR" << std::endl;
+	std::cout << "XMCLR\n";
 	std::cout << "  Cancel XMODEM file transfer." << std::endl;
 
 	std::cout << "T" << std::endl;
@@ -583,6 +625,7 @@ void TownsCommandInterpreter::PrintHelp(void) const
 	std::cout << "BP EIP|BRK EIP" << std::endl;
 	std::cout << "BP CS:EIP|BRK CS:EIP" << std::endl;
 	std::cout << "  Add a break point." << std::endl;
+	std::cout << "  BP LINE:10000 1FFFF for setting break point for a range of linear address.\n";
 	std::cout << "BPPC EIP|BRK EIP passCount" << std::endl;
 	std::cout << "BPPC CS:EIP passCount" << std::endl;
 	std::cout << "  Add a break point with pass count" << std::endl;
@@ -642,6 +685,8 @@ void TownsCommandInterpreter::PrintHelp(void) const
 	std::cout << "  Turn on/off display page." << std::endl;
 	std::cout << "CRTCSWAPFMR" << std::endl;
 	std::cout << "  Swap FMR GVRAM Page." << std::endl;
+	std::cout << "CRTCVRAMOFFSET page offset\n";
+	std::cout << "  Set VRAM offset.\n";
 	std::cout << "CMOSLOAD filename" << std::endl;
 	std::cout << "  Load CMOS." << std::endl;
 	std::cout << "CMOSSAVE filename" << std::endl;
@@ -795,6 +840,18 @@ void TownsCommandInterpreter::PrintHelp(void) const
 	std::cout << "  Monitor file sharing with TGDRV.\n";
 	std::cout << "MOUSEMON\n";
 	std::cout << "  Monitor mouse integration.\n";
+	std::cout << "DIRTYPE / DIRECTTYPE\n";
+	std::cout << "  Direct-type mode.\n";
+	std::cout << "CONSOUT / CONSSTEAL\n";
+	std::cout << "  Override CON and INT 29H to redirect output to the host terminal.\n";
+	std::cout << "IOLOG\n";
+	std::cout << "  I/O access log.\n";
+	std::cout << "FMT3631MON\n";
+	std::cout << "FMT3632MON\n";
+	std::cout << "  FMT-3631/3632 monitor.\n";
+	std::cout << "FMT3631SNEAK\n";
+	std::cout << "FMT3632SNEAK\n";
+	std::cout << "  FMT-3631/3632 sneak mode (show extra lines below visible part of the VRAM).\n";
 
 
 	std::cout << "<< Information that can be printed >>" << std::endl;
@@ -886,7 +943,20 @@ void TownsCommandInterpreter::PrintHelp(void) const
 	std::cout << "SAVESTATEM" << std::endl;
 	std::cout << "  List of memory-saved states." << std::endl;
 	std::cout << "TGDRV\n";
-	std::cout << "  TG drive shared directories\n";
+	std::cout << "  TG drive shared directories.\n";
+	std::cout << "IO\n";
+	std::cout << "  List of known IO ports.\n";
+	std::cout << "IO portnumber-in-hexadecimal\n";
+	std::cout << "  Show short explanation of the IO port.\n";
+	std::cout << "LAN\n";
+	std::cout << "  Ethernet adapter state.\n";
+	std::cout << "IOLOG\n";
+	std::cout << "  I/O access log.\n";
+	std::cout << "FMT3631\n";
+	std::cout << "FMT-3631\n";
+	std::cout << "  FMT-3631 status.\n";
+	std::cout << "FMT3631MORE\n";
+	std::cout << "  MOre info about FMT-3631/3632.\n";
 	std::cout << "" << std::endl;
 
 	std::cout << "<< Event that can break >>" << std::endl;
@@ -905,6 +975,9 @@ void TownsCommandInterpreter::PrintHelp(void) const
 	std::cout << "INT n AX=hhhh" << std::endl;
 	std::cout << "INT n CSEIP=cs:eip EIP=eip" << std::endl;
 	std::cout << "  Break on interrupt.  Can specify specific multiple CS:EIP or EIP." << std::endl;
+	std::cout << "EXCEPTIONAT CS:EIP\n";
+	std::cout << "EXAT CS:EIP\n";
+	std::cout << "  Any exception at CS:EIP.\n";
 	std::cout << "FOPEN fileNameWildCard" << std::endl;
 	std::cout << "  Break when fopen,fcreate with the given file name." << std::endl;
 	std::cout << "RDCVRAM" << std::endl;
@@ -939,6 +1012,8 @@ void TownsCommandInterpreter::PrintHelp(void) const
 	std::cout << "  Windows 3.1 VxD service call." << std::endl;
 	std::cout << "CST depth" << std::endl;
 	std::cout << "  When the call stack depth exceeds the threshold." << std::endl;
+	std::cout << "FMT3631UNSUP\n";
+	std::cout << "  When unsupported features of FMT-3631 is used.\n";
 }
 
 void TownsCommandInterpreter::PrintError(int errCode) const
@@ -1001,8 +1076,23 @@ TownsCommandInterpreter::Command TownsCommandInterpreter::Interpret(const std::s
 {
 	Command cmd;
 
-	cmd.cmdline=cmdline;
-	cmd.argv=cpputil::Parser(cmdline.c_str());
+	if(true==directTypeMode)
+	{
+		if('!'==cmdline[0])
+		{
+			cmd.cmdline=cmdline.data()+1;
+		}
+		else
+		{
+			cmd.cmdline="TYPE "+cmdline;
+		}
+	}
+	else
+	{
+		cmd.cmdline=cmdline;
+	}
+
+	cmd.argv=cpputil::Parser(cmd.cmdline.c_str());
 	cmd.primaryCmd=CMD_NONE;
 
 	if(0<cmd.argv.size())
@@ -1557,6 +1647,9 @@ void TownsCommandInterpreter::Execute(TownsThread &thr,FMTownsCommon &towns,clas
 	case CMD_CRTC_SWAP_FMRGVRAMPAGE:
 		Execute_CRTC_SwapFMRGVRAMPage(towns,cmd);
 		break;
+	case CMD_CRTC_VRAMOFFSET:
+		Execute_CRTCVRAMOffset(towns,cmd);
+		break;
 	case CMD_CMOSLOAD:
 		Execute_CMOSLoad(towns,cmd);
 		break;
@@ -1761,7 +1854,10 @@ void TownsCommandInterpreter::Execute(TownsThread &thr,FMTownsCommon &towns,clas
 		Execute_XMODEMCRCfromVM(towns,cmd);
 		break;
 	case CMD_XMODEM_CLEAR:
-		towns.serialport.defaultClient.ClearXMODEM();
+		for(auto &cli : towns.serialport.defaultClient)
+		{
+			cli.ClearXMODEM();
+		}
 		break;
 
 	case CMD_SPECIAL_DEBUG:
@@ -1786,21 +1882,11 @@ void TownsCommandInterpreter::Execute(TownsThread &thr,FMTownsCommon &towns,clas
 			}
 			else
 			{
-				uint32_t foundBUGAt=0;
-				for(unsigned int addr=0; addr+3<=0xC0000; ++addr)
+				towns.state.DOSSEG=towns.FindDOSSEG();
+				if(0==towns.state.DOSSEG)
 				{
-					if(true==cpputil::Match(3,(const unsigned char *)"BUG",towns.physMem.state.RAM.data()+addr))
-					{
-						foundBUGAt=addr;
-						break;
-					}
+					std::cout << "Could not find keyword BUG (signature of DOSSEG for DOS 3.x)\n";
 				}
-				if(0==foundBUGAt)
-				{
-					std::cout << "Keyword 'BUG' not found.\n";
-					break;
-				}
-				towns.state.DOSSEG=foundBUGAt/0x10;
 			}
 			std::cout << "Set DOSSEG=" << cpputil::Uitox(towns.state.DOSSEG) << "h" << std::endl;
 		}
@@ -2111,7 +2197,7 @@ void TownsCommandInterpreter::Execute_Enable(FMTownsCommon &towns,Command &cmd,O
 			std::cout << "Start DOS-Stdout Capture." << std::endl;
 			break;
 		case ENABLE_TGDRV_MONITOR:
-			towns.tgdrv.monitor=true;
+			towns.tgdrv.SetMonitor(true);
 			std::cout << "Enabled TGDRV monitor.\n";
 			break;
 		case ENABLE_MOUSE_MONITOR:
@@ -2121,7 +2207,30 @@ void TownsCommandInterpreter::Execute_Enable(FMTownsCommon &towns,Command &cmd,O
 			break;
 		case ENABLE_DIFFERENTIAL_MOUSE_INTEGRATION:
 			outside_world->differentialMouseIntegration=true;
+			outside_world->ShowMouseCursor(false);
 			std::cout << "Enabled differential mouse integration\n";
+			break;
+		case ENABLE_DIRECT_TYPE_MODE:
+			directTypeMode=true;
+			std::cout << "Enabled direct-type mode.\n";
+			std::cout << "  Text typed on the terminal is directly sent to the VM.\n";
+			std::cout << "  To type a VM command, type ! and then command.\n";
+			std::cout << "  To come back to the normal mode, type !DIS DIRTYPE\n";
+			break;
+		case ENABLE_CONSOLE_STEAL:
+			Enable_Disable_ConsoleSteal(towns,true);
+			break;
+		case ENABLE_IOLOG:
+			towns.io.EnableLog();
+			std::cout << "Enabled I/O log.\n";
+			break;
+		case ENABLE_FMT3631MON:
+			towns.fmt3631.monitorCtrl=true;
+			std::cout << "Enabled FMT-3631/3632 monitor.\n";
+			break;
+		case ENABLE_FMT3631SNEAK:
+			towns.fmt3631.sneak=64;
+			std::cout << "Enabled FMT-3631/3632 sneak.\n";
 			break;
 		}
 	}
@@ -2248,7 +2357,7 @@ void TownsCommandInterpreter::Execute_Disable(FMTownsCommon &towns,Command &cmd,
 			std::cout << "Stop DOS-Stdout Capture." << std::endl;
 			break;
 		case ENABLE_TGDRV_MONITOR:
-			towns.tgdrv.monitor=true;
+			towns.tgdrv.SetMonitor(false);
 			std::cout << "Disabled TGDRV monitor.\n";
 			break;
 		case ENABLE_MOUSE_MONITOR:
@@ -2258,9 +2367,180 @@ void TownsCommandInterpreter::Execute_Disable(FMTownsCommon &towns,Command &cmd,
 			break;
 		case ENABLE_DIFFERENTIAL_MOUSE_INTEGRATION:
 			outside_world->differentialMouseIntegration=false;
+			outside_world->ShowMouseCursor(true);
 			std::cout << "Disabled differential mouse integration\n";
 			break;
+		case ENABLE_DIRECT_TYPE_MODE:
+			directTypeMode=false;
+			std::cout << "Disabled direct-type mode.\n";
+			break;
+		case ENABLE_CONSOLE_STEAL:
+			Enable_Disable_ConsoleSteal(towns,false);
+			break;
+		case ENABLE_IOLOG:
+			towns.io.DisableLog();
+			std::cout << "Disabled I/O log.\n";
+			break;
+		case ENABLE_FMT3631MON:
+			towns.fmt3631.monitorCtrl=false;
+			std::cout << "Disabled FMT-3631 monitor.\n";
+			break;
+		case ENABLE_FMT3631SNEAK:
+			towns.fmt3631.sneak=0;
+			std::cout << "Disabled FMT-3631/3632 sneak.\n";
+			break;
 		}
+	}
+}
+
+void TownsCommandInterpreter::Enable_Disable_ConsoleSteal(FMTownsCommon &towns,bool enable)
+{
+	if(true==enable)
+	{
+		towns.var.VMFlags|=TOWNS_VMFLAGS_CONSOLE;
+	}
+	else
+	{
+		towns.var.VMFlags&=~TOWNS_VMFLAGS_CONSOLE;
+	}
+
+	unsigned int DOSSEG=towns.state.DOSSEG;
+	if(0==DOSSEG)
+	{
+		DOSSEG=towns.FindDOSSEG();
+	}
+	if(0==DOSSEG)
+	{
+		std::cout << "Could not find DOSSEG.\n";
+		return;
+	}
+
+	// Need to find CON device.
+	uint32_t ofs=towns.mem.FetchWord(DOSSEG*0x10+TOWNS_DOS_CON_DEV_PTR);
+	uint32_t seg=towns.mem.FetchWord(DOSSEG*0x10+TOWNS_DOS_CON_DEV_PTR+2);
+	std::cout << "CONDEV   " << cpputil::Ustox(seg) << ":" << cpputil::Ustox(ofs) << std::endl;
+
+	unsigned int CONDEV=seg*0x10+ofs;
+	if('C'!=towns.mem.FetchByte(CONDEV+10) ||
+	   'O'!=towns.mem.FetchByte(CONDEV+11) ||
+	   'N'!=towns.mem.FetchByte(CONDEV+12))
+	{
+		std::cout << "Not CON.\n";
+		return;
+	}
+	std::cout << "Verified CON.\n";
+
+	uint32_t int_ptr=towns.mem.FetchWord(CONDEV+8);
+	uint32_t int_movbx0=0,int_e6ec90=0;
+	for(uint32_t i=8; 0<i; --i)
+	{
+		if(0xBB==towns.mem.FetchByte(seg*0x10+int_ptr+i) &&
+		      0==towns.mem.FetchByte(seg*0x10+int_ptr+i+1) &&
+		      0==towns.mem.FetchByte(seg*0x10+int_ptr+i+2))
+		{
+			int_movbx0=i;
+			std::cout << "Found MOV BX,0 in CON Interrupt.\n";
+			break;
+		}
+		if(0xE6==towns.mem.FetchByte(seg*0x10+int_ptr+i) &&
+		   TOWNSIO_STEAL_CONSOLE==towns.mem.FetchByte(seg*0x10+int_ptr+i+1) &&
+		   0x90==towns.mem.FetchByte(seg*0x10+int_ptr+i+2))
+		{
+			int_e6ec90=i;
+			std::cout << "Found OUT 0ECh,AL / NOP in CON Interrupt.\n";
+			break;
+		}
+	}
+	if((0==int_movbx0 && true==enable) ||
+	   (0==int_e6ec90 && true!=enable))
+	{
+		std::cout << "Expected instruction not found.\n";
+		return;
+	}
+
+
+	// Have one.  Next find INT 29H.
+	uint32_t int29ofs=towns.mem.FetchWord(0x29*4);
+	uint32_t int29seg=towns.mem.FetchWord(0x29*4+2);
+	uint32_t int29movbx0=0,int29cstoss=0,int29e4ec=0,int29e4ed90=0;
+	for(uint32_t i=0x1f; 0<i; --i)
+	{
+		if(0xBB==towns.mem.FetchByte(int29seg*0x10+int29ofs+i) &&
+		      0==towns.mem.FetchByte(int29seg*0x10+int29ofs+i+1) &&
+		      0==towns.mem.FetchByte(int29seg*0x10+int29ofs+i+2))
+		{
+			int29movbx0=i;
+			std::cout << "Found MOV BX,0 in INT 29H handler.\n";
+			break;
+		}
+		if(0x0e==towns.mem.FetchByte(int29seg*0x10+int29ofs+i) && // PUSH CS
+		   0x17==towns.mem.FetchByte(int29seg*0x10+int29ofs+i+1)) // POP SS
+		{
+			int29cstoss=i;
+			std::cout << "Found PUSH CS/POP SS in INT 29H handler.\n";
+			break;
+		}
+
+		if(0xE4==towns.mem.FetchByte(int29seg*0x10+int29ofs+i) && // IN AL,TOWNSIO_STEAL_CONSOLE
+		   TOWNSIO_STEAL_CONSOLE==towns.mem.FetchByte(int29seg*0x10+int29ofs+i+1))
+		{
+			std::cout << "Found IN AL,0ECh in INT 29H handler.\n";
+			int29e4ec=i;
+			break;
+		}
+
+		if(0xE4==towns.mem.FetchByte(int29seg*0x10+int29ofs+i) && // IN AL,TOWNSIO_STEAL_CONSOLE_DOS6
+		   TOWNSIO_STEAL_CONSOLE_DOS6==towns.mem.FetchByte(int29seg*0x10+int29ofs+i+1) &&
+		   0x90==towns.mem.FetchByte(int29seg*0x10+int29ofs+i+2))
+		{
+			int29e4ed90=i;
+			std::cout << "Found IN AL,0EDh / NOP in INT 29H handler.\n";
+			break;
+		}
+	}
+
+	if((0==int29movbx0 && 0==int29cstoss && true==enable) ||
+	   (0==int29e4ec && 0==int29e4ed90 && true!=enable))
+	{
+		std::cout << "Expected instruction(s) not found in INT 29H handler.\n";
+		return;
+	}
+
+	if(true==enable)
+	{
+		towns.mem.StoreByte(seg*0x10+int_ptr+int_movbx0  ,0xE6); // OUT TOWNSIO_STEAL_CONSOLE,AL
+		towns.mem.StoreByte(seg*0x10+int_ptr+int_movbx0+1,TOWNSIO_STEAL_CONSOLE); // 
+		towns.mem.StoreByte(seg*0x10+int_ptr+int_movbx0+2,0x90); // NOP
+		if(0!=int29cstoss)
+		{
+			towns.mem.StoreByte(int29seg*0x10+int29ofs+int29cstoss  ,0xE4); // IN AL,TOWNSIO_STEAL_CONSOLE
+			towns.mem.StoreByte(int29seg*0x10+int29ofs+int29cstoss+1,TOWNSIO_STEAL_CONSOLE); // 
+		}
+		else if(0!=int29movbx0)
+		{
+			towns.mem.StoreByte(int29seg*0x10+int29ofs+int29movbx0  ,0xE4); // IN AL,TOWNSIO_STEAL_CONSOLE_DOS6
+			towns.mem.StoreByte(int29seg*0x10+int29ofs+int29movbx0+1,TOWNSIO_STEAL_CONSOLE_DOS6); // 
+			towns.mem.StoreByte(int29seg*0x10+int29ofs+int29movbx0+2,0x90); // NOP
+		}
+		std::cout << "Enabled Console Steal.\n";
+	}
+	if(true!=enable)
+	{
+		towns.mem.StoreByte(seg*0x10+int_ptr+int_e6ec90  ,0xBB); // MOV BX,0
+		towns.mem.StoreByte(seg*0x10+int_ptr+int_e6ec90+1,0); // 
+		towns.mem.StoreByte(seg*0x10+int_ptr+int_e6ec90+2,0); //
+		if(0!=int29e4ec)
+		{
+			towns.mem.StoreByte(int29seg*0x10+int29ofs+int29e4ec  ,0x0E); // PUSH CS
+			towns.mem.StoreByte(int29seg*0x10+int29ofs+int29e4ec+1,0x17); // POP SS
+		}
+		else if(0!=int29e4ed90)
+		{
+			towns.mem.StoreByte(int29seg*0x10+int29ofs+int29e4ed90  ,0xBB); // MOV BX,0
+			towns.mem.StoreByte(int29seg*0x10+int29ofs+int29e4ed90+1,0);
+			towns.mem.StoreByte(int29seg*0x10+int29ofs+int29e4ed90+2,0);
+		}
+		std::cout << "Disabled Console Steal.\n";
 	}
 }
 
@@ -2350,15 +2630,16 @@ void TownsCommandInterpreter::Execute_Toggle(FMTownsCommon &towns,Command &cmd,c
 			std::cout << "Toggle not supported for this feature.\n";
 			break;
 		case ENABLE_TGDRV_MONITOR:
-			cpputil::Toggle(towns.tgdrv.monitor);
+			towns.tgdrv.SetMonitor(false==towns.tgdrv.GetMonitor());
 			std::cout << "TGDRV monitor is ";
-			std::cout << cpputil::BoolToOnOffStr(towns.tgdrv.monitor) << ".\n";
+			std::cout << cpputil::BoolToOnOffStr(towns.tgdrv.GetMonitor()) << ".\n";
 			break;
 		case ENABLE_MOUSE_MONITOR:
 			std::cout << "Toggle not supported for this feature.\n";
 			break;
 		case ENABLE_DIFFERENTIAL_MOUSE_INTEGRATION:
 			cpputil::Toggle(outside_world->differentialMouseIntegration);
+			outside_world->ShowMouseCursor(false==outside_world->differentialMouseIntegration);
 			std::cout << "Differential mouse integration is";
 			std::cout << cpputil::BoolToOnOffStr(outside_world->differentialMouseIntegration) << ".\n";
 			break;
@@ -2398,7 +2679,32 @@ void TownsCommandInterpreter::Execute_AddBreakPoint(FMTownsCommon &towns,Command
 	else
 	{
 		auto farPtr=towns.CPU().TranslateFarPointer(cmdutil::MakeFarPointer(cmd.argv[1],towns.CPU()));
-		towns.debugger.AddBreakPoint(farPtr,info);
+		if(i486DXCommon::FarPointer::LINEAR_ADDR==farPtr.SEG)
+		{
+			// BP LINE:10000 1FFFF
+			//   To break when CS:EIP Linear addr is between 10000H and 1FFFFh
+			if(3<=cmd.argv.size())
+			{
+				uint32_t addr2=0;
+				TownsLineParserHexadecimal parser(&towns.CPU());
+				if(true==parser.Analyze(cmd.argv[2]))
+				{
+					addr2=parser.Evaluate();
+				}
+				towns.debugger.SetLinearBreakPointRange(farPtr.OFFSET,addr2);
+				std::cout << "Break at Linear Address between " << cpputil::Uitox(farPtr.OFFSET) << "H and " << cpputil::Uitox(addr2) << "H\n";
+			}
+			else
+			{
+				towns.debugger.SetLinearBreakPointRange(farPtr.OFFSET,farPtr.OFFSET);
+				std::cout << "Break at Linear Address " << cpputil::Uitox(farPtr.OFFSET) << "H\n";
+			}
+			std::cout << "BP LINE:0 0 to clear.\n";
+		}
+		else
+		{
+			towns.debugger.AddBreakPoint(farPtr,info);
+		}
 	}
 }
 
@@ -2945,6 +3251,84 @@ void TownsCommandInterpreter::Execute_Dump(FMTownsCommon &towns,Command &cmd)
 				std::cout << str << "\n";
 			}
 			break;
+		case DUMP_IOLIST:
+			{
+				unsigned int iomin=0,iomax=0xffff;
+				if(3<=cmd.argv.size())
+				{
+					iomin=cpputil::Xtoi(cmd.argv[2]);
+					iomax=iomin;
+					if(4<=cmd.argv.size())
+					{
+						iomax=cpputil::Xtoi(cmd.argv[3]);
+					}
+				}
+				bool foundAtLeastOne=false;
+				auto ioLabel=FMTownsIOMap();;
+				for(auto io=iomin; io<=iomax; ++io)
+				{
+					auto found=ioLabel.find(io);
+					if(ioLabel.end()!=found)
+					{
+						std::cout << cpputil::Ustox(io) << ":" << found->second << "\n";
+						foundAtLeastOne=true;
+					}
+				}
+				if(true!=foundAtLeastOne)
+				{
+					std::cout << "No known io in this range.\n";
+				}
+			}
+			break;
+		case DUMP_LAN:
+			for(auto str : towns.rex3586.GetStatusText())
+			{
+				std::cout << str << "\n";
+			}
+			break;
+		case DUMP_IOLOG:
+			{
+				auto ioLabel=FMTownsIOMap();
+				std::cout << "PORT  Count i8/i16/i32/o8/o16/o32\n";
+				for(auto l : towns.io.log)
+				{
+					auto port=l.first;
+					auto log=l.second;
+
+					std::cout << cpputil::Ustox(port) << "(";
+
+					auto found=ioLabel.find(port);
+					if(ioLabel.end()!=found)
+					{
+						std::cout << found->second;
+					}
+					else
+					{
+						std::cout << "???";
+					}
+					std::cout << ")  ";
+
+					std::cout << log.in8 << '/' << log.in16 << '/' << log.in32 << '/';
+					std::cout << log.out8 << '/' << log.out16 << '/' << log.out32 << '\n';
+				}
+			}
+			break;
+		case DUMP_FMT3631:
+			{
+				for(auto str : towns.fmt3631.GetStatusText())
+				{
+					std::cout << str << "\n";
+				}
+			}
+			break;
+		case DUMP_FMT3631MORE:
+			{
+				for(auto str : towns.fmt3631.GetAdditionalStatusText())
+				{
+					std::cout << str << "\n";
+				}
+			}
+			break;
 		}
 	}
 	else
@@ -3017,6 +3401,20 @@ void TownsCommandInterpreter::Execute_Dump_DOSInfo(FMTownsCommon &towns,Command 
 {
 	if(3<=cmd.argv.size())
 	{
+		if(0==towns.state.DOSSEG)
+		{
+			towns.state.DOSSEG=towns.FindDOSSEG();
+			if(0==towns.state.DOSSEG)
+			{
+				std::cout << "DOSSEG is not set.\n";
+				return;
+			}
+			else
+			{
+				std::cout << "DOSSEG found at " << cpputil::Ustox(towns.state.DOSSEG) << "\n";
+			}
+		}
+
 		// IO.SYS of Towns OS loads MSDOS.SYS at 1679H segment.
 		const uint32_t DOSADDR=towns.state.DOSSEG*0x10; // Physical Address
 
@@ -3627,6 +4025,20 @@ void TownsCommandInterpreter::Execute_BreakOn(FMTownsCommon &towns,Command &cmd,
 					return;
 				}
 				break;
+			case BREAK_ON_EXCEPTION_AT:
+				if(3<=cmd.argv.size())
+				{
+					auto farPtr=cmdutil::MakeFarPointer(cmd.argv[2],towns.CPU());
+					farPtr=towns.CPU().TranslateFarPointer(farPtr);
+					towns.debugger.BreakOnExceptionAt(farPtr);
+					std::cout << "Break on Exception At:" << farPtr.Format() << "\n";
+				}
+				else
+				{
+					PrintError(ERROR_TOO_FEW_ARGS);
+					return;
+				}
+				break;
 			case BREAK_ON_CVRAM_READ:
 				towns.physMem.FMRVRAMAccess.breakOnCVRAMRead=true;
 				break;
@@ -3795,6 +4207,9 @@ void TownsCommandInterpreter::Execute_BreakOn(FMTownsCommon &towns,Command &cmd,
 					return;
 				}
 				break;
+			case BREAK_ON_UNSUPPORTED_FMT3631CMD:
+				towns.fmt3631.breakOnUnsupported=true;
+				break;
 			}
 			std::cout << "Break On " << reason << " is ON." << std::endl;
 		}
@@ -3890,10 +4305,26 @@ void TownsCommandInterpreter::Execute_ClearBreakOn(FMTownsCommon &towns,Command 
 			if(3<=cmd.argv.size())
 			{
 				towns.debugger.ClearBreakOnINT(cpputil::Xtoi(cmd.argv[2].c_str()));
+				std::cout << "Cleared break on INT " << cpputil::Ubtox(cpputil::Xtoi(cmd.argv[2].c_str())) << "H\n";
 			}
 			else
 			{
 				towns.debugger.ClearBreakOnINT();
+				std::cout << "Cleared all break on INT\n";
+			}
+			break;
+		case BREAK_ON_EXCEPTION_AT:
+			if(3<=cmd.argv.size())
+			{
+				auto farPtr=cmdutil::MakeFarPointer(cmd.argv[2],towns.CPU());
+				farPtr=towns.CPU().TranslateFarPointer(farPtr);
+				towns.debugger.ClearBreakOnExceptionAt(farPtr);
+				std::cout << "Cleared break on Exception At:" << farPtr.Format() << "\n";
+			}
+			else
+			{
+				towns.debugger.ClearBreakOnExceptionAt();
+				std::cout << "Cleared all break on Exception\n";
 			}
 			break;
 		case BREAK_ON_FOPEN:
@@ -4082,6 +4513,9 @@ void TownsCommandInterpreter::Execute_ClearBreakOn(FMTownsCommon &towns,Command 
 			break;
 		case BREAK_ON_CALLSTACK_DEPTH:
 			towns.debugger.ClearBreakOnCallStackDepth();
+			break;
+		case BREAK_ON_UNSUPPORTED_FMT3631CMD:
+			towns.fmt3631.breakOnUnsupported=false;
 			break;
 		}
 		std::cout << "Break On " << iter->first << " is OFF." << std::endl;
@@ -4896,6 +5330,49 @@ void TownsCommandInterpreter::Execute_CRTCPage(FMTownsCommon &towns,Command &cmd
 	}
 }
 
+void TownsCommandInterpreter::Execute_CRTCVRAMOffset(FMTownsCommon &towns,Command &cmd)
+{
+	if(2<=cmd.argv.size() && true==towns.crtc.InSinglePageMode())
+	{
+		uint32_t offset=cpputil::Xtoi(cmd.argv[1].c_str());
+		switch(towns.crtc.GetPageBitsPerPixel(0))
+		{
+		case 4:
+			offset/=4;
+			break;
+		case 8:
+			offset/=8;
+			break;
+		case 16:
+			offset/=8;
+			break;
+		}
+		towns.crtc.state.crtcReg[TownsCRTC::REG_FA0]=offset;
+	}
+	else if(3<=cmd.argv.size() && true!=towns.crtc.InSinglePageMode())
+	{
+		uint32_t page=1&cpputil::Xtoi(cmd.argv[1].c_str());
+		uint32_t offset=cpputil::Xtoi(cmd.argv[2].c_str());
+		switch(towns.crtc.GetPageBitsPerPixel(page))
+		{
+		case 4:
+			offset/=4;
+			break;
+		case 8:
+			offset/=8;
+			break;
+		case 16:
+			offset/=4;
+			break;
+		}
+		towns.crtc.state.crtcReg[TownsCRTC::REG_FA0+page*4]=offset;
+	}
+	else
+	{
+		PrintError(ERROR_TOO_FEW_ARGS);
+	}
+}
+
 void TownsCommandInterpreter::Execute_CRTC_SwapFMRGVRAMPage(FMTownsCommon &towns,Command &cmd)
 {
 	std::cout << "FMR GVRAM Page from " << cpputil::Uitox(towns.crtc.state.FMRVRAMOffset);
@@ -5156,7 +5633,7 @@ void TownsCommandInterpreter::Execute_Search_ByteSequence(FMTownsCommon &towns,c
 		PrintError(ERROR_NO_DATA_GIVEN);
 		return;
 	}
-	std::cout << "Search is limited in the main RAM and VRAM only." << std::endl;
+	std::cout << "Search is limited in the main RAM, sprite RAM, and VRAM only." << std::endl;
 
 	int maxCount=100;
 	for(unsigned int addr=0; addr+bytes.size()<=towns.physMem.state.RAM.size(); ++addr)
@@ -5164,6 +5641,17 @@ void TownsCommandInterpreter::Execute_Search_ByteSequence(FMTownsCommon &towns,c
 		if(true==cpputil::Match(bytes.size(),bytes.data(),towns.physMem.state.RAM.data()+addr))
 		{
 			FoundAt(towns,addr);
+		}
+	}
+	for(unsigned int addr=0; addr+bytes.size()<=TOWNSADDR_SPRITERAM_END-TOWNSADDR_SPRITERAM_BASE; ++addr)
+	{
+		if(true==cpputil::Match(bytes.size(),bytes.data(),towns.physMem.state.spriteRAM+addr))
+		{
+			FoundAt(towns,TOWNSADDR_SPRITERAM_BASE+addr);
+			if(--maxCount<=0)
+			{
+				std::cout << "Reached maximum count." << std::endl;
+			}
 		}
 	}
 	for(unsigned int addr=0; addr+bytes.size()<=towns.physMem.GetVRAMSize(); ++addr)
@@ -5272,16 +5760,27 @@ void TownsCommandInterpreter::Execute_XMODEMtoVM(FMTownsCommon &towns,Command &c
 {
 	if(2<=cmd.argv.size())
 	{
+		int port=0;
 		auto dat=cpputil::ReadBinaryFile(towns.var.ExpandFileName(cmd.argv[1]));
+		for(int i=2; i<cmd.argv.size(); ++i)
+		{
+			auto arg=cmd.argv[i];
+			cpputil::Capitalize(arg);
+			if("-COM0"==arg || "-COM1"==arg || "-COM2"==arg || "-COM3"==arg || "-COM4"==arg)
+			{
+				port=arg[4]-'0';
+			}
+		}
 		if(0==dat.size())
 		{
 			PrintError(ERROR_CANNOT_OPEN_FILE);
 		}
 		else
 		{
-			if(towns.serialport.state.intel8251.clientPtr==&towns.serialport.defaultClient)
+			if(towns.serialport.state.COM[port].intel8251.clientPtr==&towns.serialport.defaultClient[port])
 			{
-				towns.serialport.defaultClient.SetUpXMODEMtoVM(dat,packetLength);
+				towns.serialport.defaultClient[port].ClearXMODEM();
+				towns.serialport.defaultClient[port].SetUpXMODEMtoVM(dat,packetLength);
 				std::cout << "Ready to send " << cmd.argv[1] << std::endl;
 				std::cout << "Start XMODEM in FM TOWNS!" << std::endl;
 			}
@@ -5300,9 +5799,22 @@ void TownsCommandInterpreter::Execute_XMODEMfromVM(FMTownsCommon &towns,Command 
 {
 	if(2<=cmd.argv.size())
 	{
-		if(towns.serialport.state.intel8251.clientPtr==&towns.serialport.defaultClient)
+		int port=0;
+		for(int i=2; i<cmd.argv.size(); ++i)
 		{
-			towns.serialport.defaultClient.SetUpXMODEMfromVM(towns.var.ExpandFileName(cmd.argv[1]));
+			auto arg=cmd.argv[i];
+			cpputil::Capitalize(arg);
+			if("-COM0"==arg || "-COM1"==arg || "-COM2"==arg || "-COM3"==arg || "-COM4"==arg)
+			{
+				port=arg[4]-'0';
+			}
+		}
+		if(towns.serialport.state.COM[port].intel8251.clientPtr==&towns.serialport.defaultClient[port])
+		{
+			towns.serialport.defaultClient[port].ClearXMODEM();
+			towns.serialport.defaultClient[port].SetUpXMODEMfromVM(towns.var.ExpandFileName(cmd.argv[1]));
+			towns.serialport.state.UpdateINTState();
+			towns.serialport.UpdatePIC();
 			std::cout << "Ready to receive " << cmd.argv[1] << std::endl;
 			std::cout << "(XMODEM upload must be started before this command in FM TOWNS)" << std::endl;
 		}
@@ -5321,9 +5833,21 @@ void TownsCommandInterpreter::Execute_XMODEMCRCfromVM(FMTownsCommon &towns,Comma
 {
 	if(2<=cmd.argv.size())
 	{
-		if(towns.serialport.state.intel8251.clientPtr==&towns.serialport.defaultClient)
+		int port=0;
+		for(int i=2; i<cmd.argv.size(); ++i)
 		{
-			towns.serialport.defaultClient.SetUpXMODEMCRCfromVM(towns.var.ExpandFileName(cmd.argv[1]));
+			auto arg=cmd.argv[i];
+			cpputil::Capitalize(arg);
+			if("-COM0"==arg || "-COM1"==arg || "-COM2"==arg || "-COM3"==arg || "-COM4"==arg)
+			{
+				port=arg[4]-'0';
+			}
+		}
+		if(towns.serialport.state.COM[port].intel8251.clientPtr==&towns.serialport.defaultClient[port])
+		{
+			towns.serialport.defaultClient[port].SetUpXMODEMCRCfromVM(towns.var.ExpandFileName(cmd.argv[1]));
+			towns.serialport.state.UpdateINTState();
+			towns.serialport.UpdatePIC();
 			std::cout << "Ready to receive " << cmd.argv[1] << std::endl;
 			std::cout << "(XMODEM upload must be started before this command in FM TOWNS)" << std::endl;
 		}

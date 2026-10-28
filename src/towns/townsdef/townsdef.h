@@ -26,6 +26,8 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 	const uint64_t PER_SECOND=1000000000;  // Unit: Nano Seconds
 	const uint64_t TOWNS_RENDERING_FREQUENCY=PER_SECOND/60;
 
+	const uint32_t TOWNS_MAX_VRAM_SIZE =4*1024*1024; // 2MB if FMT-3631 is in charge.  4MB FMT-3632.
+
 	const uint32_t TOWNS_VRAM_SIZE     =1024*1024;
 	const uint32_t TOWNS_MIDRES_VRAM_SIZE=512*1024;
 	const uint32_t TOWNS_CMOS_SIZE     =8192;
@@ -125,11 +127,11 @@ enum
 
 #define TOWNSADDR_FMR_ANK8_BASE           0xCA000 // [2] pp.12 Figure I-1-6
 #define TOWNSADDR_FMR_ANK8_END            0xCB000
-#define TOWNSADDR_FMR_ANK8_MAP            0x3D000 // Error in [2] pp.12 Figue I-1-6?  Offset 1E800 is •Þ not A
+#define TOWNSADDR_FMR_ANK8_MAP            0x3D000 // Error in [2] pp.12 Figue I-1-6?  Offset 1E800 is ï¿½ï¿½ not A
 
 #define TOWNSADDR_FMR_ANK16_BASE          0xCB000 // [2] pp.12 Figure I-1-6
 #define TOWNSADDR_FMR_ANK16_END           0xCC000
-#define TOWNSADDR_FMR_ANK16_MAP           0x3D800 // Error in [2] pp.12 Figure I-1-6?  Offset 1F000 is –Þ not wide-A
+#define TOWNSADDR_FMR_ANK16_MAP           0x3D800 // Error in [2] pp.12 Figure I-1-6?  Offset 1F000 is ï¿½ï¿½ not wide-A
 
 #define TOWNSADDR_FMR_VRAM_CVRAM_FONT_END 0xD0000
 
@@ -147,6 +149,18 @@ enum
 #define TOWNSADDR_SYSROM_MAP_END         0x100000
 #define TOWNSADDR_SYSROM_MAP_SIZE          0x8000
 #define TOWNSADDR_SYSROM_MAP_OFFSET_DIFFERENCE ((256-32)*1024)   // SYSROM 256KB.  Last 32KB is mapped to 0xF8000 to 0xFFFFF.
+
+#define TOWNSADDR_POSSIBLE_MAINRAM_END 0x45FFFFFF
+
+#define TOWNSADDR_FMT3631_BASE         0x46000000
+#define TOWNSADDR_FMT3631_CONTROL      0x46100000
+#define TOWNSADDR_FMT3631_VRAM         0x46200000 // Power 9100 datasheet suggests direct VRAM access may start 46800000h, but Linux source tells 46200000h
+#define TOWNSADDR_FMT3631_END          0x46400000
+#define TOWNSADDR_FMT3631_AND          0x003FFFFF
+
+#define TOWNSADDR_FMT3632_BASE        0x8A000000
+#define TOWNSADDR_FMT3632_VRAM        0x8A800000
+#define TOWNSADDR_FMT3632_END         0x8AC00000
 
 #define TOWNSADDR_VRAM0_BASE           0x80000000
 #define TOWNSADDR_VRAM0_END            0x80080000
@@ -483,6 +497,39 @@ enum
 	TOWNSIO_SCSI_STATUS_CONTROL= 0xC32, // [2] pp.262
 	TOWNSIO_SCSI_WORD_TFR_AVAIL= 0xC34, // [2] pp.801
 
+	TOWNSIO_COM1_STATUS_COMMAND=0xC82, // Equivalent to [2] pp.269
+	TOWNSIO_COM1_DATA=          0xC80, // Equivalent to [2] pp.274
+	TOWNSIO_COM1_STATUS2=       0xC84, // Equivalent to FM TOWNS Techincal Databook p.20
+	TOWNSIO_COM1_INT_REASON=    0xC86, // Equivalent to [2] pp.275
+	TOWNSIO_COM1_INT_CONTROL=   0xC88, // Equivalent to [2] pp.276
+	TOWNSIO_COM1_TIMER_COUNT=   0xCA0,
+	TOWNSIO_COM1_COM2_TIMER_CONTROL= 0xCA6,
+
+	TOWNSIO_COM2_STATUS_COMMAND=0xC92, // Equivalent to [2] pp.269
+	TOWNSIO_COM2_DATA=          0xC90, // Equivalent to [2] pp.274
+	TOWNSIO_COM2_STATUS2=       0xC94, // Equivalent to FM TOWNS Techincal Databook p.20
+	TOWNSIO_COM2_INT_REASON=    0xC96, // Equivalent to [2] pp.275
+	TOWNSIO_COM2_INT_CONTROL=   0xC98, // Equivalent to [2] pp.276
+	TOWNSIO_COM2_TIMER_COUNT=   0xCA2,
+
+	TOWNSIO_COM3_STATUS_COMMAND=0xCC2, // Equivalent to [2] pp.269
+	TOWNSIO_COM3_DATA=          0xCC0, // Equivalent to [2] pp.274
+	TOWNSIO_COM3_STATUS2=       0xCC4, // Equivalent to FM TOWNS Techincal Databook p.20
+	TOWNSIO_COM3_INT_REASON=    0xCC6, // Equivalent to [2] pp.275
+	TOWNSIO_COM3_INT_CONTROL=   0xCC8, // Equivalent to [2] pp.276
+	TOWNSIO_COM3_TIMER_COUNT=   0xCE0,
+	TOWNSIO_COM3_COM4_TIMER_CONTROL= 0xCE6,
+
+	TOWNSIO_COM4_STATUS_COMMAND=0xCD2, // Equivalent to [2] pp.269
+	TOWNSIO_COM4_DATA=          0xCD0, // Equivalent to [2] pp.274
+	TOWNSIO_COM4_STATUS2=       0xCD4, // Equivalent to FM TOWNS Techincal Databook p.20
+	TOWNSIO_COM4_INT_REASON=    0xCD6, // Equivalent to [2] pp.275
+	TOWNSIO_COM4_INT_CONTROL=   0xCD8, // Equivalent to [2] pp.276
+	TOWNSIO_COM4_TIMER_COUNT=   0xCE2,
+
+	TOWNSIO_COM1_4_INT_SOURCE=  0xCB0, // Active-Low  b0:COM1 b1:COM2 b2:COM3 b4:COM4
+
+
 
 	TOWNSIO_MIDI_CARD1_DATREG1=0x0E50,         // MIDI card(MT-402 or 403) No.1 Out port 1 datReg1 (from Linux source)
 	TOWNSIO_MIDI_CARD1_CMDREG1=0x0E51,         // MIDI card(MT-402 or 403) No.1 cmdReg1 (Linux source)
@@ -533,6 +580,16 @@ enum
 	TOWNSIO_MIDI_TIMER_CTRL=               0x0E77,
 	// Probably <<
 
+
+	TOWNSIO_FMT_3631_PRESENCE_CHECK=       0x1100,
+	// FMT-3631 returns 60H on this I/O only if the straight-cable from on-board Video Out to FMT-3631 RGB-in is connected.
+	// The cable from on-board to FMT-3631 is a straight-cable.  Pin-7 CSYNC is grounded on the FMT-3631 side, therefore
+	// connecting Pin-7 risks CSYNC directly connected to GND.  Experiment confirmed that pin-7 connection is not needed. (2026/06/22)
+	TOWNSIO_FMT_3632_1=                    0x1101, // bit 1 seems to tell the VRAM size, not confirmed.
+	TOWNSIO_FMT_3632_2=                    0x9100,
+	TOWNSIO_FMT_3632_3=                    0x9104,
+	// If Windows FMT-3632 driver is selected, and if I/O 0x1100 returns 0x80 (or at least high 2-bits matches 0x80),
+	// Windows driver checks 0x1101 next.  Most likely it is checking how large a RAM the board has.
 
 
 	TOWNSIO_CMOS_BASE=           0x3000,
@@ -596,6 +653,53 @@ enum
 	TOWNS_QUICK_DEBUG_STATE=      0xEB,  // Writing to this I/O port will show the VM state, not break.
 
 	TOWNSIO_HOST_CONSOLE=         0xE9,  // Direct console input/output to the host.  Apparently DOS emulators use this I/O for this purpose.
+	TOWNSIO_STEAL_CONSOLE=        0xEC,  // Used for overriding CON device.  Write:From CON dev (MOV BX,0 -> OUT 0ECh,AL)  Read:INT 29H (PUSH CS POP SS -> IN AL,0ECh)
+	TOWNSIO_STEAL_CONSOLE_DOS6=   0xED,  // Used for overriding CON device in DOS6.  Write:From CON dev  Read: INT 29H
+
+	TOWNSIO_CMOS_RAM_FLAG0=         0x3150, // 
+	TOWNSIO_CMOS_BOOT_DEV_FLAG=     0x3180, // Usage unknown
+	TOWNSIO_CMOS_DEF_BOOT_DEV_TYPE= 0x3182, // 1:HD 2:FD 8:CD
+	TOWNSIO_CMOS_DEF_BOOT_DEV_UNIT= 0x3184,
+	TOWNSIO_CMOS_16BIT_CHKSUM_3000H_TO_3146H_LOW=0x3148,
+	TOWNSIO_CMOS_16BIT_CHKSUM_3000H_TO_3146H_HIGH=0x314A,
+	TOWNSIO_CMOS_MEMSIZE_IN_MBx16_MINUS_1_HIGH=0x3188,
+	TOWNSIO_CMOS_MEMSIZE_IN_MBx16_MINUS_1_LOW=0x318A,
+	// 0x314C,0x314E MX's SYSROM compares values against 79h,41h
+	// 0x319C,0x319E used for saving SS by SYSROM
+	// 0x31A0,0x31A2 used for saving SP by SYSROM
+	// 0x31A4,0x31A6 used for saving AX by SYSROM
+	// 0x31A8 MX's SYSROM writes 0FEh
+	// 0x31AA MX's SYSROM writes 005h
+	TOWNSIO_CMOS_DISABLE_CPU_CACHE= 0x31B0, // If non-zero, MX's SYSROM disables 80486 cache.
+	TOWNSIO_CMOS_RESET_REASON=      0x31B8, // SYSROM saves I/O 20H Reset Reason.
+	// 0x31CC MX's SYSROM writes zero on power-on.
+	TOWNSIO_CMOS_FUJITSU_IN_SJIS=   0x31D0, // Fujitsu in Shift-JIS Kanji
+	TOWNSIO_CMOS_DRIVE_ASSIGN=      0x31DC, // Type (0:FD 3:RAM 5:ROM 2:SCSI) and Unit
+	TOWNSIO_CMOS_RAM_DISK_SIZE_LOW= 0x321C, // In KB
+	TOWNSIO_CMOS_RAM_DISK_SIZE_HIGH=0x321E,
+	TOWNSIO_CMOS_SINGLE_DRIVE_MODE= 0x328C, // Evil single-drive mode.
+	TOWNSIO_CMOS_ALLOC_DICT_AREA=   0x32B2,
+	TOWNSIO_CMOS_CHECKSUM_ADJUST=   0x33CE,
+	TOWNSIO_CMOS_VERBOSE_INIT_MSG_R=    0x3A34, // Writing 'R' and 'A' to these I/O will enable verbose initialization message during boot.
+	TOWNSIO_CMOS_VERBOSE_INIT_MSG_A=    0x3A36,
+	TOWNSIO_CMOS_MEMORY_SIZE_IN_MB= 0x3A5C, // Low 7 bits of I/O 05E8h is copied to this byte.
+	TOWNSIO_CMOS_SAVE_SP_LOW=       0x3A64, // SP is saved when switching to the protected mode.
+	TOWNSIO_CMOS_SAVE_SP_HIGH=      0x3A66, // SP is saved when switching to the protected mode.
+	TOWNSIO_CMOS_SAVE_SS_LOW=       0x3A68, // SS is saved when switching to the protected mode.
+	TOWNSIO_CMOS_SAVE_SS_HIGH=      0x3A6A, // SS is saved when switching to the protected mode.
+	TOWNSIO_CMOS_SAVE_PIC1=         0x3A6C, // PIC2 setting is saved when switching to the protected mode.
+	TOWNSIO_CMOS_SAVE_PIC2=         0x3A6E, // PIC2 setting is saved when switching to the protected mode.
+	TOWNSIO_CMOS_SAVE_TIMER_INT=    0x3A70, // Timer INT Ctrl (60H) is saved when switching to the protected mode.
+	TOWNSIO_CMOS_SCSI_DETECT=       0x3AC4,
+	TOWNSIO_CMOS_TBIOS_TYPE=        0x3AD8, // b7:1 Use high-res/full-color TBIOS
+	TOWNSIO_CMOS_TBIOS_PHYSADDR=    0x3B90,
+	TOWNSIO_CMOS_SAVE_NMI_MASK=     0x3C16, // NMI Mask (I/O 28H) is saved when switching to the protected mode.
+	TOWNSIO_CMOS_FAST_PWRON_MEMTEST=0x3C1A, // b0:Skip majority of memory test if set  b1:Skip ALL memory test if set  b2:Memory Diagnostic Mode 2  b7:Test ROM,DMAC,PIT
+	TOWNSIO_CMOS_CPU_INIT_DH=       0x3C24, // Saves initial value of DH on power-on.
+	TOWNSIO_CMOS_CPU_INIT_DL=       0x3C26, // Saves initial value of DL on power-on.
+	TOWNSIO_CMOS_BOOT_DEV=          0x3C28, // 80H:CD 20H-23H:FD 10H-14H:SCSI 4AH:ICM
+	TOWNSIO_CMOS_FAST_MODE=         0x3c2A,
+	TOWNSIO_CMOS_CD_BOOT_SETTINGS_IN_FD=0x3C32, // b0:1 Read settings from FD when starting Towns OS from CD.
 
 	TOWNSIO_LAN_REX3586_TX_STATUS=	0x7000,
 	TOWNSIO_LAN_REX3586_RX_STATUS=	0x7001,
@@ -614,6 +718,29 @@ enum
 	TOWNSIO_LAN_REX3586_DMABURST=	0x700D,
 	TOWNSIO_LAN_REX3586_SELF_RX=	0x700E,
 	TOWNSIO_LAN_REX3586_TRCV_STATUS=0x700F,
+
+	TOWNSIO_LAN_REX3586_ROM=        0x7010,
+
+	// Depending on the jumper-pin, REX3586 can use 7100H to 711FH
+	TOWNSIO_LAN_REX3586_ALT_TX_STATUS=	0x7100,
+	TOWNSIO_LAN_REX3586_ALT_RX_STATUS=	0x7101,
+	TOWNSIO_LAN_REX3586_ALT_TX_INTEN=	0x7102,
+	TOWNSIO_LAN_REX3586_ALT_RX_INTEN=	0x7103,
+	TOWNSIO_LAN_REX3586_ALT_TX_MODE=	0x7104,
+	TOWNSIO_LAN_REX3586_ALT_RX_MODE=	0x7105,
+	TOWNSIO_LAN_REX3586_ALT_CONFIG0=	0x7106,
+	TOWNSIO_LAN_REX3586_ALT_CONFIG1=	0x7107,
+	// Reg Bank 2
+	TOWNSIO_LAN_REX3586_ALT_BUFFMEMPORT_L=0x7108,
+	TOWNSIO_LAN_REX3586_ALT_BUFFMEMPORT_H=0x7109,
+	TOWNSIO_LAN_REX3586_ALT_TX_START=	  0x710A,
+	TOWNSIO_LAN_REX3586_ALT_16COLL=		  0x710B,
+	TOWNSIO_LAN_REX3586_ALT_DMAEN=		  0x710C,
+	TOWNSIO_LAN_REX3586_ALT_DMABURST=	  0x710D,
+	TOWNSIO_LAN_REX3586_ALT_SELF_RX=	  0x710E,
+	TOWNSIO_LAN_REX3586_ALT_TRCV_STATUS=  0x710F,
+  
+	TOWNSIO_LAN_REX3586_ALT_ROM=          0x7110,
 };
 
 enum
@@ -852,6 +979,7 @@ enum
 	BOOT_KEYCOMB_DEBUG,
 	BOOT_KEYCOMB_PAD_A,
 	BOOT_KEYCOMB_PAD_B,
+	BOOT_KEYCOMB_PAD_AB,
 	BOOT_KEYCOMB_FASTMODE,
 	BOOT_KEYCOMB_SLOWMODE,
 BOOT_KEYCOMB_ERROR,
@@ -977,6 +1105,16 @@ enum	// Commands written to I/O TOWNSIO_VM_HOST_IF_CMD_STATUS=0x2386
 
 	TOWNS_VMIF_CMD_CAPTURE_FM_FNUM=0x0C, // Capture F-Number of YM2612 Ch0.
 	TOWNS_VMIF_CMD_CAPTURE_FM_TL  =0x0D, // Capture TL of YM2612 Ch0 Slot 4
+
+	TOWNS_VMIF_CMD_GET_VMFLAGS    =0x0E, // Capture VM control flags in EAX.
+	TOWNS_VMIF_CMD_RELEASE_CONSOLE_CMD=0x0F,  // Send console command to auto-typing.
+
+	TOWNS_VMIF_CMD_GET_MOUSE_POSITION=0x10, // Get mouse position in the host's window coordinate.  ESI=x, EDI=y, AL=b5:lb b3:rb, AH=0xFF.  Clear AH before doing it to see if it is in action.
+};
+
+enum
+{
+	TOWNS_VMFLAGS_CONSOLE=1,  // In Tsugaru OS, CONDEV writes character output to I/O E9h.
 };
 
 enum
@@ -1052,6 +1190,7 @@ enum
 	TOWNS_APPSPECIFIC_ROCKETRANGER,
 	TOWNS_APPSPECIFIC_ASUKA120,
 	TOWNS_APPSPECIFIC_DRAKKEN,
+	TOWNS_APPSPECIFIC_HABITAT,
 
 TOWNS_NUM_APPSPECIFIC
 };
@@ -1186,6 +1325,8 @@ enum
 {
 	TOWNS_CMOSRAM_FASTMODE_FLAG     =0x615, // I/O 3C2Ah
 };
+
+#define TOWNS_NUM_COM_PORTS 5
 
 /* } */
 #endif

@@ -14,7 +14,7 @@ public:
 
 	static void DirEntFromFd(DirectoryEntry &ent,WIN32_FIND_DATAA &fd);
 	static std::string MakeShortPath(std::string dir,std::string name);
-	static void ConvertDirEntToSJIS(DirectoryEntry &ent,std::string hostPath);
+	static void ConvertDirEntToSJISShortPath(DirectoryEntry &ent,std::string hostPath);
 
 	static bool IsSJISFirstKanjiByte(unsigned char c);
 	static bool SJISNameFitsWithin8dot3(std::string sjis);
@@ -68,7 +68,10 @@ void FileSys::FindContext::Close(void)
 	std::string longPath=cpputil::MakeFullPathName(dir,name);
 
 	std::vector <char> shortPath;
-	shortPath.resize(longPath.size()+1);
+	shortPath.resize(longPath.size()*2+1); // <- Buffer should be long enough because...
+	// Short name can be longer than long(?) name.
+	// WIN3.1.H0 (9 chars) will be assigned WIN31~1.H0(10 chars).
+	// 1.2.TXT (7 chars) may be assigned 1265B4~1.TXT (12 chars).
 	if(0==GetShortPathNameA(longPath.data(),shortPath.data(),shortPath.size()))
 	{
 		return "";
@@ -81,7 +84,7 @@ void FileSys::FindContext::Close(void)
 /*!
    path needs to be in the host encoding.
 */
-/* static */ void FileSys::FindContext::ConvertDirEntToSJIS(DirectoryEntry &ent,std::string hostPath)
+/* static */ void FileSys::FindContext::ConvertDirEntToSJISShortPath(DirectoryEntry &ent,std::string hostPath)
 {
 	auto sjis=ToSJISEncoding(ent.fName);
 	if(true==SJISNameFitsWithin8dot3(sjis))
@@ -205,7 +208,7 @@ void FileSys::FindClose(FindContext *find)
 	find->Close();
 }
 
-FileSys::DirectoryEntry FileSys::FindFirst(std::string subPath,FindContext *find)
+FileSys::DirectoryEntry FileSys::FindFirst(std::string subPath,FindContext *find) const
 {
 	find->Close();
 
@@ -214,7 +217,7 @@ FileSys::DirectoryEntry FileSys::FindFirst(std::string subPath,FindContext *find
 	{
 		path.push_back('/');
 	}
-	path+="*.*";
+	path+="*.*"; // This is problematic.
 
 	WIN32_FIND_DATAA fd;
 	find->hFind=FindFirstFileA(path.c_str(),&fd);
@@ -229,11 +232,11 @@ FileSys::DirectoryEntry FileSys::FindFirst(std::string subPath,FindContext *find
 		ent.endOfDir=false;
 		find->subPath=subPath;
 		find->DirEntFromFd(ent,fd);
-		find->ConvertDirEntToSJIS(ent,ToHostEncoding(subPath));
+		find->ConvertDirEntToSJISShortPath(ent,path);
 	}
 	return ent;
 }
-FileSys::DirectoryEntry FileSys::FindNext(FindContext *find)
+FileSys::DirectoryEntry FileSys::FindNext(FindContext *find) const
 {
 	DirectoryEntry ent;
 	if(INVALID_HANDLE_VALUE==find->hFind)
@@ -243,6 +246,12 @@ FileSys::DirectoryEntry FileSys::FindNext(FindContext *find)
 	}
 	else
 	{
+		auto path=MakeHostPath(ToHostEncoding(find->subPath));
+		if(""==path || (path.back()!='/' && path.back()!='\\'))
+		{
+			path.push_back('/');
+		}
+
 		WIN32_FIND_DATAA fd;
 		if(TRUE!=FindNextFileA(find->hFind,&fd))
 		{
@@ -253,13 +262,15 @@ FileSys::DirectoryEntry FileSys::FindNext(FindContext *find)
 		{
 			ent.endOfDir=false;
 			find->DirEntFromFd(ent,fd);
-			find->ConvertDirEntToSJIS(ent,ToHostEncoding(find->subPath));
+			find->ConvertDirEntToSJISShortPath(ent,path);
 		}
 	}
 	return ent;
 }
 FileSys::DirectoryEntry FileSys::GetFileAttrib(std::string fileName) const
 {
+	AdjustSubPathForLongFileName(fileName);
+
 	auto path=MakeHostPath(ToHostEncoding(fileName));
 	WIN32_FIND_DATAA fd;
 	auto hFind=FindFirstFileA(path.c_str(),&fd);
@@ -273,7 +284,7 @@ FileSys::DirectoryEntry FileSys::GetFileAttrib(std::string fileName) const
 	{
 		ent.endOfDir=false;
 		FindContext::DirEntFromFd(ent,fd);
-		FindContext::ConvertDirEntToSJIS(ent,path);
+		FindContext::ConvertDirEntToSJISShortPath(ent,ToHostEncoding(hostPath));
 		::FindClose(hFind);
 	}
 	return ent;
@@ -308,6 +319,43 @@ FileSys::DirectoryEntry FileSys::GetFileAttrib(std::string fileName) const
 	if(0==_rmdir(str.c_str()))
 	{
 		return true;
+	}
+	return false;
+}
+bool FileSys::SetModifiedDateTime(
+	std::string fName,
+	unsigned int year,unsigned int month,unsigned int date,
+	unsigned int hour,unsigned int min,unsigned int sec)
+{
+	HANDLE hFile=CreateFileA(fName.c_str(),GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+	if(INVALID_HANDLE_VALUE!=hFile)
+	{
+		SYSTEMTIME sysTime;
+		FILETIME localFileTime,UTCFileTime;
+
+		sysTime.wYear=year;// Realized Windows has a year 30828 problem.  See reference of SystemTimeToFileTime Win32 function.
+		sysTime.wMonth=month;
+		sysTime.wDayOfWeek=0; // Not used by SystemTimeToFileTime.
+		sysTime.wDay=date;
+		sysTime.wHour=hour;
+		sysTime.wMinute=min;
+		sysTime.wSecond=sec;
+		sysTime.wMilliseconds=0;
+
+		SystemTimeToFileTime(&sysTime,&localFileTime);
+
+		// What to do with the time zone?  Making it to local time, but may not be correct.
+		// Especially if the file is from before year 2000ish, it may be in Japan time.
+		LocalFileTimeToFileTime(&localFileTime,&UTCFileTime);
+
+		SetFileTime(hFile,NULL,NULL,&UTCFileTime);
+
+
+		CloseHandle(hFile);
+	}
+	else
+	{
+		std::cout << "Failed to update last-modified date/time.\n";
 	}
 	return false;
 }

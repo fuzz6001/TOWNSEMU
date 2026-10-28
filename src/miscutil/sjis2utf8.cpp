@@ -1,4 +1,5 @@
 #include "sjis2utf8.h"
+#include <mutex>
 
 struct ShiftJISToUTF8Table
 {
@@ -11402,7 +11403,17 @@ std::string ShiftJIS_UTF8::SJIStoUTF8(std::string from) const
 		}
 		else
 		{
-			to.push_back(from[i]);
+			auto found=_SJIStoUTF8.find(uc[i]); // Hankaku Kana?
+			if(found!=_SJIStoUTF8.end())
+			{
+				to.push_back(found->second[0]);
+				to.push_back(found->second[1]);
+				to.push_back(found->second[2]);
+			}
+			else
+			{
+				to.push_back(from[i]);
+			}
 		}
 	}
 	return to;
@@ -11444,3 +11455,19 @@ std::string ShiftJIS_UTF8::UTF8toSJIS(std::string from) const
 	}
 	return to;
 }
+
+ShiftJIS_UTF8 *ShiftJIS_UTF8::Singleton(void)
+{
+	std::mutex mtx;
+	static ShiftJIS_UTF8 *su=nullptr;
+
+	mtx.lock();
+	if(nullptr==su)
+	{
+		su=new ShiftJIS_UTF8;
+	}
+	mtx.unlock();
+
+	return su;
+}
+

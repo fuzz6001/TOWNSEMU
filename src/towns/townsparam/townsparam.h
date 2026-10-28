@@ -8,6 +8,8 @@
 #include <vector>
 #include <unordered_map>
 #include <utility>
+#include <utility>
+#include <stdint.h>
 #include "townsdef.h"
 #include "i486.h" // Need FidelityLevel.
 
@@ -18,7 +20,8 @@ public:
 	{
 		WINDOW_NORMAL,
 		WINDOW_MAXIMIZE,
-		WINDOW_FULLSCREEN
+		WINDOW_FULLSCREEN,
+		WINDOW_SPECIFY_SIZE,
 	};
 
 	enum
@@ -43,6 +46,9 @@ public:
 		bool ctrl,shift;
 		std::string cmdStr;
 	};
+
+	uint32_t VMFlags=0;
+	std::vector <std::string> consoleCmd;
 
 	bool verbose=false;
 
@@ -71,6 +77,13 @@ public:
 
 	bool damperWireLine=true;
 	bool scanLineEffectIn15KHz=false;
+
+	bool removeInternalCD=false;
+
+	bool enableLAN=false;
+	std::vector <std::pair <uint16_t,uint16_t> > portForwarding;
+
+	bool fmt3631=false,fmt3632=false;
 
 	// If not "", VM starts from this saved state.
 	std::string startUpStateFName;
@@ -123,6 +136,8 @@ public:
 
 	std::vector <std::string> initCmd;
 
+	bool COMPortEnabled[TOWNS_NUM_COM_PORTS]={true,false,false,false,false};
+
 
 	// When adding a throttle control for an app, also update Outside_World::CacheGamePadIndicesThatNeedUpdates.
 	int throttlePhysicalId=-1;
@@ -158,6 +173,10 @@ public:
 	bool forceQuitOnPowerOff=false;
 	std::string powerOffAt;
 
+	bool powerOffOnIOW=false;
+	uint32_t powerOffOnIOWPort=~0;
+	uint32_t powerOffOnIOWValue=~0;
+
 	bool pretend386DX=false;
 	bool useFPU=false;
 
@@ -171,9 +190,9 @@ public:
 	enum
 	{
 		DEFAULT_MOUSE_MINX=0,
-		DEFAULT_MOUSE_MAXX=1023,
+		DEFAULT_MOUSE_MAXX=1279,
 		DEFAULT_MOUSE_MINY=0,
-		DEFAULT_MOUSE_MAXY=767,
+		DEFAULT_MOUSE_MAXY=1023,
 	};
 	int mouseMinX=DEFAULT_MOUSE_MINX;
 	int mouseMaxX=DEFAULT_MOUSE_MAXX;
@@ -191,6 +210,7 @@ public:
 	unsigned int scaling=100;
 	bool autoScaling=false,maintainAspect=true;
 	unsigned int windowModeOnStartUp=WINDOW_NORMAL;
+	unsigned int windowSize[2]={640,480}; // Valid only with WINDOW_SPECIFY_SIZE.
 
 	std::string quickScrnShotDir;
 	std::string quickStateSaveFName;

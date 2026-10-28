@@ -163,6 +163,13 @@ public:
 	{
 		memWin=cpu.DebugGetConstMemoryWindow(codeAddressSize,CS,offset,mem);
 	}
+
+	// Do not check exception if it is fetching instruction for disassembly.
+	static inline bool CheckExceptionInHighFidelityMode(const CPUCLASS &)
+	{
+		return false;
+	}
+
 	inline static unsigned int FetchInstructionByte(
 		CPUCLASS &cpu,
 		MemoryAccess::ConstPointer &,
@@ -245,6 +252,11 @@ class i486DXFidelityLayer<FIDELITY>::RealFetchInstructionFunctions
 {
 public:
 	typedef i486DXFidelityLayer<FIDELITY> CPUCLASS;
+
+	static inline bool CheckExceptionInHighFidelityMode(const CPUCLASS &cpu)
+	{
+		return FIDELITY::CheckExceptionInHighFidelityMode(cpu);
+	}
 
 	inline static void GetConstMemoryWindow(
 		CPUCLASS &cpu,
@@ -356,6 +368,13 @@ public:
 		if(true!=memWin.IsLinearAddressInRange(CSEIPLinear))
 		{
 			FUNCCLASS::GetConstMemoryWindow(cpu,memWin,inst.codeAddressSize,CS,offset,mem);
+			// If Page Fault, do not bother fetch instruction.
+			// By fetching, Page Fault may turn into Segmentation Violation.
+			// Page Fault must be prioritize.
+			if(true==FUNCCLASS::CheckExceptionInHighFidelityMode(cpu))
+			{
+				return; // Page Fault -> Don't look at memory at all.
+			}
 		}
 		auto ptr=memWin.GetReadAccessPointer(CSEIPLinear);
 

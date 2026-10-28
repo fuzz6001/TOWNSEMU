@@ -212,6 +212,10 @@ unsigned int TownsStrToKeyComb(std::string str)
 	{
 		return BOOT_KEYCOMB_PAD_B;
 	}
+	if("PADAB"==str || "padab"==str)
+	{
+		return BOOT_KEYCOMB_PAD_AB;
+	}
 	if("T"==str || "t"==str || "FAST"==str || "fast"==str)
 	{
 		return BOOT_KEYCOMB_FASTMODE;
@@ -851,6 +855,10 @@ unsigned int TownsStrToApp(std::string str)
 	{
 		return TOWNS_APPSPECIFIC_DRAKKEN;
 	}
+	if("HABITAT"==str)
+	{
+		return TOWNS_APPSPECIFIC_HABITAT;
+	}
 	return TOWNS_APPSPECIFIC_NONE;
 }
 std::string TownsAppToStr(unsigned int i)
@@ -901,6 +909,8 @@ std::string TownsAppToStr(unsigned int i)
 		return "ASUKA120";
 	case TOWNS_APPSPECIFIC_DRAKKEN:
 		return "DRAKKEN";
+	case TOWNS_APPSPECIFIC_HABITAT:
+		return "HABITAT";
 	}
 }
 

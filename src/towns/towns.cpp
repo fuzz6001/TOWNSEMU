@@ -26,6 +26,14 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include "outside_world.h"
 #include "i486symtable.h"
 #include "townscommandutil.h"
+#include "sjis2utf8.h"
+
+#ifdef _WIN32
+	#include <direct.h>
+	#define getcwd _getcwd
+#else
+	#include <unistd.h>
+#endif
 
 
 
@@ -45,18 +53,12 @@ void FMTownsCommon::State::PowerOn(void)
 {
 	bool result=true;
 
+	towns.var.VMFlags=argv.VMFlags;
+	towns.var.consoleCmd=argv.consoleCmd;
+
 	if(true==argv.verbose)
 	{
 		std::cout << __FUNCTION__ << " LINE:" << __LINE__ << "\n";
-	}
-
-	if(""==argv.ROMPath)
-	{
-		std::cout << "Usage:" << std::endl;
-		std::cout << "  Tsugaru_CUI rom_directory_name" << std::endl;
-		std::cout << "or," << std::endl;
-		std::cout << "  Tsugaru_CUI -HELP" << std::endl;
-		return false;
 	}
 
 	if(true==argv.verbose)
@@ -92,10 +94,29 @@ void FMTownsCommon::State::PowerOn(void)
 		std::cout << __FUNCTION__ << " LINE:" << __LINE__ << "\n";
 	}
 
-	if(true!=towns.LoadROMImages(argv.ROMPath.c_str(),argv.verbose))
+	if(""!=argv.ROMPath)
 	{
-		std::cout << towns.vmAbortReason << std::endl;
-		return false;
+		if(true!=towns.LoadROMImages(argv.ROMPath.c_str(),argv.verbose))
+		{
+			std::cout << towns.vmAbortReason << std::endl;
+			return false;
+		}
+	}
+	else
+	{
+		char cwd[4096];
+		getcwd(cwd,sizeof(cwd));
+		if(true!=towns.LoadROMImages(cwd,argv.verbose))
+		{
+			if(true!=towns.LoadROMImages(outside_world->GetProgramResourceDirectory(),argv.verbose))
+			{
+				std::cout << "Usage:" << std::endl;
+				std::cout << "  Tsugaru_CUI rom_directory_name" << std::endl;
+				std::cout << "or," << std::endl;
+				std::cout << "  Tsugaru_CUI -HELP" << std::endl;
+				return false;
+			}
+		}
 	}
 
 	if(true==argv.verbose)
@@ -138,6 +159,8 @@ void FMTownsCommon::State::PowerOn(void)
 		towns.townsType=argv.townsType;
 		towns.physMem.SetUpMemoryAccess(argv.townsType,towns.TownsTypeToCPUType(argv.townsType));
 	}
+
+	towns.cdrom.var.virtuallyRemoved=argv.removeInternalCD;
 
 	towns.cdrom.searchPaths=argv.cdSearchPaths;
 	if(""!=argv.cdImgFName)
@@ -333,6 +356,10 @@ void FMTownsCommon::State::PowerOn(void)
 		towns.debugger.AddBreakPoint(towns.var.powerOffAt,info);
 	}
 
+	towns.debugger.powerOffOnIOW=argv.powerOffOnIOW;
+	towns.debugger.powerOffOnIOWPort=argv.powerOffOnIOWPort;
+	towns.debugger.powerOffOnIOWValue=argv.powerOffOnIOWValue;
+
 	std::cout << "Loaded ROM Images.\n";
 
 	towns.Reset();
@@ -408,6 +435,8 @@ void FMTownsCommon::State::PowerOn(void)
 	windowInterface->maintainAspect=argv.maintainAspect;
 	windowInterface->windowShift=argv.windowShift;
 	windowInterface->windowModeOnStartUp=argv.windowModeOnStartUp;
+	windowInterface->windowSizeOnStartUp[0]=argv.windowSize[0];
+	windowInterface->windowSizeOnStartUp[1]=argv.windowSize[1];
 
 	outside_world->mouseByFlightstickAvailable=argv.mouseByFlightstickAvailable;
 	outside_world->cyberStickAssignment=argv.cyberStickAssignment;
@@ -467,9 +496,38 @@ void FMTownsCommon::State::PowerOn(void)
 		}
 	}
 
+	for(int i=0; i<TOWNS_NUM_COM_PORTS; ++i)
+	{
+		towns.serialport.state.COM[i].valid=argv.COMPortEnabled[i];
+	}
+
 	if(true==argv.verbose)
 	{
 		std::cout << __FUNCTION__ << " LINE:" << __LINE__ << "\n";
+	}
+
+	if(true==argv.enableLAN)
+	{
+		towns.rex3586.state.enabled=true;
+		towns.rex3586.StartRealNetwork();
+		for(auto fwd : argv.portForwarding)
+		{
+			towns.rex3586.net.RequestPortForwarding(towns.rex3586.realNet,fwd.first,fwd.second);
+		}
+	}
+
+	if(true==argv.fmt3631 && true==argv.fmt3632)
+	{
+		std::cout << "Cannot enable FMT-3631 and FMT-3632 at the same time.\n";
+		return false;
+	}
+	if(true==argv.fmt3631)
+	{
+		towns.fmt3631.EnableAsFMT3631();
+	}
+	if(true==argv.fmt3632)
+	{
+		towns.fmt3631.EnableAsFMT3632();
 	}
 
 	return result;
@@ -585,9 +643,11 @@ std::string FMTownsCommon::Variable::ExpandFileName(std::string incoming) const
 
 FMTownsCommon::FMTownsCommon() : 
 	Device(this),
+	debugger(this),
 	physMem(this,&mem,&sound.state.rf5c68),
 	keyboard(this,&pic),
-	crtc(this,&sprite),
+	crtc(this,&sprite,&fmt3631),
+	fmt3631(this),
 	sprite(this,&physMem),
 	pic(this),
 	dmac(this),
@@ -603,7 +663,8 @@ FMTownsCommon::FMTownsCommon() :
 	vndrv(this),
 	tgdrv(this),
 	mapXY{this,this},
-	highResPCM(this)
+	highResPCM(this),
+	rex3586(this)
 {
 	/* Memo to myself:
 	To instantiate high-fidelity VM and default-fidelity VM in the same executable
@@ -638,6 +699,8 @@ FMTownsCommon::FMTownsCommon() :
 	allDevices.push_back(&vndrv);
 	allDevices.push_back(&tgdrv);
 	allDevices.push_back(&highResPCM);
+	allDevices.push_back(&rex3586);
+	allDevices.push_back(&fmt3631);
 	VMBase::CacheDeviceIndex();
 
 	physMem.SetMainRAMSize(4*1024*1024);
@@ -719,6 +782,8 @@ FMTownsCommon::FMTownsCommon() :
 	io.AddDevice(this,TOWNSIO_VRAMWAIT); //                0x5E6,
 	io.AddDevice(this,TOWNSIO_FASTMODE); //                0x5EC, // [2] pp.794
 	io.AddDevice(this,TOWNSIO_HOST_CONSOLE);  // 0xE9
+	io.AddDevice(this,TOWNSIO_STEAL_CONSOLE);  // 0xEC
+	io.AddDevice(this,TOWNSIO_STEAL_CONSOLE_DOS6);  // 0xED
 
 
 
@@ -826,8 +891,42 @@ FMTownsCommon::FMTownsCommon() :
 
 	io.AddDevice(&serialport,TOWNSIO_RS232C_STATUS_COMMAND); // 0xA02, // [2] pp.269
 	io.AddDevice(&serialport,TOWNSIO_RS232C_DATA); //           0xA00, // [2] pp.274
+	io.AddDevice(&serialport,TOWNSIO_RS232C_STATUS2);
 	io.AddDevice(&serialport,TOWNSIO_RS232C_INT_REASON); //     0xA06, // [2] pp.275
 	io.AddDevice(&serialport,TOWNSIO_RS232C_INT_CONTROL); //    0xA08, // [2] pp.276
+
+	io.AddDevice(&serialport,TOWNSIO_COM1_STATUS_COMMAND);
+	io.AddDevice(&serialport,TOWNSIO_COM1_DATA);
+	io.AddDevice(&serialport,TOWNSIO_COM1_STATUS2);
+	io.AddDevice(&serialport,TOWNSIO_COM1_INT_REASON);
+	io.AddDevice(&serialport,TOWNSIO_COM1_INT_CONTROL);
+	io.AddDevice(&serialport,TOWNSIO_COM1_TIMER_COUNT);
+	io.AddDevice(&serialport,TOWNSIO_COM1_COM2_TIMER_CONTROL);
+
+	io.AddDevice(&serialport,TOWNSIO_COM2_STATUS_COMMAND);
+	io.AddDevice(&serialport,TOWNSIO_COM2_DATA);
+	io.AddDevice(&serialport,TOWNSIO_COM2_STATUS2);
+	io.AddDevice(&serialport,TOWNSIO_COM2_INT_REASON);
+	io.AddDevice(&serialport,TOWNSIO_COM2_INT_CONTROL);
+	io.AddDevice(&serialport,TOWNSIO_COM2_TIMER_COUNT);
+
+	io.AddDevice(&serialport,TOWNSIO_COM3_STATUS_COMMAND);
+	io.AddDevice(&serialport,TOWNSIO_COM3_DATA);
+	io.AddDevice(&serialport,TOWNSIO_COM3_STATUS2);
+	io.AddDevice(&serialport,TOWNSIO_COM3_INT_REASON);
+	io.AddDevice(&serialport,TOWNSIO_COM3_INT_CONTROL);
+	io.AddDevice(&serialport,TOWNSIO_COM3_TIMER_COUNT);
+	io.AddDevice(&serialport,TOWNSIO_COM3_COM4_TIMER_CONTROL);
+
+	io.AddDevice(&serialport,TOWNSIO_COM4_STATUS_COMMAND);
+	io.AddDevice(&serialport,TOWNSIO_COM4_DATA);
+	io.AddDevice(&serialport,TOWNSIO_COM4_STATUS2);
+	io.AddDevice(&serialport,TOWNSIO_COM4_INT_REASON);
+	io.AddDevice(&serialport,TOWNSIO_COM4_INT_CONTROL);
+	io.AddDevice(&serialport,TOWNSIO_COM4_TIMER_COUNT);
+
+	io.AddDevice(&serialport,TOWNSIO_COM1_4_INT_SOURCE);
+
 
 	io.AddDevice(&vndrv,TOWNSIO_VNDRV_APICHECK);//       0x2F10,
 	io.AddDevice(&vndrv,TOWNSIO_VNDRV_ENABLE);//         0x2F12,
@@ -893,6 +992,47 @@ FMTownsCommon::FMTownsCommon() :
 	io.AddDevice(&midi,TOWNSIO_MIDI_TIMER1_COUNT); //             0x0E75,
 	io.AddDevice(&midi,TOWNSIO_MIDI_TIMER2_COUNT); //             0x0E76,
 	io.AddDevice(&midi,TOWNSIO_MIDI_TIMER_CTRL); //               0x0E77,
+
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_TX_STATUS); //	0x7000,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_RX_STATUS); //	0x7001,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_TX_INTEN); // 	0x7002,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_RX_INTEN); // 	0x7003,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_TX_MODE); // 		0x7004,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_RX_MODE); // 		0x7005,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_CONFIG0); // 		0x7006,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_CONFIG1); // 		0x7007,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_BUFFMEMPORT_L); //0x7008,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_BUFFMEMPORT_H); //0x7009,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_TX_START); //		0x700A,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_16COLL); //		0x700B,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_DMAEN); //		0x700C,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_DMABURST); //		0x700D,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_SELF_RX); //		0x700E,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_TRCV_STATUS); //	0x700F,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ROM); // 			0x7010
+
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_TX_STATUS); //	0x7100,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_RX_STATUS); //	0x7101,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_TX_INTEN); // 	0x7102,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_RX_INTEN); // 	0x7103,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_TX_MODE); // 		0x7104,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_RX_MODE); // 		0x7105,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_CONFIG0); // 		0x7106,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_CONFIG1); // 		0x7107,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_BUFFMEMPORT_L); //0x7108,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_BUFFMEMPORT_H); //0x7109,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_TX_START); //		0x710A,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_16COLL); //		0x710B,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_DMAEN); //		0x710C,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_DMABURST); //		0x710D,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_SELF_RX); //		0x710E,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_TRCV_STATUS); //	0x710F,
+	io.AddDevice(&rex3586,TOWNSIO_LAN_REX3586_ALT_ROM); // 			0x7110
+
+	io.AddDevice(&fmt3631,TOWNSIO_FMT_3631_PRESENCE_CHECK); //      0x1100
+	io.AddDevice(&fmt3631,TOWNSIO_FMT_3632_1);              //      0x1101
+	io.AddDevice(&fmt3631,TOWNSIO_FMT_3632_2);              //      0x9100
+	io.AddDevice(&fmt3631,TOWNSIO_FMT_3632_3);              //      0x9104
 
 	baseClassReady=true;
 }
@@ -1131,7 +1271,6 @@ void FMTownsCommon::ProcessSound(Outside_World *outside_world)
 
 		unsigned int excType,excCode;
 		state.MOS_work_linearAddr=cpu.state.GS().baseLinearAddr+cpu.GetEDI();
-		state.MOS_work_physicalAddr=cpu.DebugLinearAddressToPhysicalAddress(excType,excCode,state.MOS_work_linearAddr,mem);
 
 		i486DXCommon::SegmentRegister CS;
 		cpu.DebugLoadSegmentRegister(CS,0x110,mem,i486DXCommon::MODE_NATIVE);
@@ -1144,12 +1283,51 @@ void FMTownsCommon::ProcessSound(Outside_World *outside_world)
 
 		std::cout << "Identified TBIOS as: " << TBIOSIDENTtoString(state.tbiosVersion) << std::endl;
 
+		// Need TBIOS Version to get offset of mouse XY.
+		{
+			auto XYOffset=GetMouseXYOffsetInMOSWork(state.tbiosVersion);
+			uint32_t linear=state.MOS_work_linearAddr+XYOffset;
+			state.MOS_work_physicalAddr=cpu.DebugLinearAddressToPhysicalAddress(excType,excCode,linear,mem);
+			state.MOS_work_physicalAddr-=XYOffset;
+			// Make it base for getting mouse XY coordinates.
+			// Why not storing MOS_work_XY_address instead of MOS_work_physicalAddr?
+			// If I do so, some state-save data becomes unusable.
+			// I can store both MOS_work_physicalAddr and MOS_work_XY_address, but well essentially it is exclusively used for
+			// getting mouse coordinate.
+		}
+
 		// It's a good time for some patches.
 		switch(state.appSpecificSetting)
 		{
 		case TOWNS_APPSPECIFIC_DAIKOUKAIJIDAI:
 			Daikoukai_ApplyPatchesCacheAddr();
 			break;
+		}
+	}
+	else if(1==cpu.GetAH())
+	{
+		if(TownsEventLog::MODE_RECORDING==eventLog.mode || TownsEventLog::MODE_PLAYBACK==eventLog.mode)
+		{
+			eventLog.LogMouseEnd(state.townsTime);
+		}
+		std::cout << "Mouse BIOS stopped." << std::endl;
+		state.mouseBIOSActive=false;
+		state.tbiosVersion=TBIOS_UNKNOWN;
+	}
+	else if(0x02==cpu.GetAH()) // MOS_disp
+	{
+		if(TOWNS_APPSPECIFIC_HABITAT==state.appSpecificSetting)
+		{
+			// Fujitsu Habitat apparently is not using the Mouse BIOS to draw cursor on page 1.
+			// Instead, I can check if BIOS cursor is on or off to see on which page the cursor is.
+			if(cpu.GetAL()==1) // Show: Means cursor is on Page 0.
+			{
+				state.mouseDisplayPage=0;
+			}
+			else // Hide: Means the non-BIOS cursor is on Page 1.
+			{
+				state.mouseDisplayPage=1;
+			}
 		}
 	}
 	else if(0x04==cpu.GetAH()) // Set Position
@@ -1190,16 +1368,6 @@ void FMTownsCommon::ProcessSound(Outside_World *outside_world)
 			Daikoukai2_CaptureFlags();
 		}
 	}
-	else if(1==cpu.GetAH())
-	{
-		if(TownsEventLog::MODE_RECORDING==eventLog.mode || TownsEventLog::MODE_PLAYBACK==eventLog.mode)
-		{
-			eventLog.LogMouseEnd(state.townsTime);
-		}
-		std::cout << "Mouse BIOS stopped." << std::endl;
-		state.mouseBIOSActive=false;
-		state.tbiosVersion=TBIOS_UNKNOWN;
-	}
 }
 
 /* virtual */ void FMTownsCommon::InterceptINT21H(unsigned int AX,const std::string fName)
@@ -1226,6 +1394,11 @@ void FMTownsCommon::RunFastDevicePollingInternal(void)
 	state.nextFastDevicePollingTime=state.townsTime+FAST_DEVICE_POLLING_INTERVAL;
 }
 
+void FMTownsCommon::PreponeNextFastDevicePollingTime(int64_t timeInNanosec)
+{
+	state.nextFastDevicePollingTime=std::min<int64_t>(state.nextFastDevicePollingTime,timeInNanosec);
+}
+
 void FMTownsCommon::SetUpVRAMAccess(bool breakOnRead,bool breakOnWrite)
 {
 	physMem.SetUpVRAMAccess(TownsTypeToCPUType(townsType),breakOnRead,breakOnWrite);
@@ -1238,7 +1411,7 @@ bool FMTownsCommon::FASTModeLamp(void) const
 
 void FMTownsCommon::SetMainRAMSize(long long int size)
 {
-	uint64_t RAMEnd=0x7FFFFFFF;
+	uint64_t RAMEnd=TOWNSADDR_POSSIBLE_MAINRAM_END;
 	if(TOWNSTYPE_MARTY==townsType)
 	{
 		size=std::min<uint64_t>(size,TOWNSADDR_MARTY_OSROM_BASE);
@@ -1259,7 +1432,7 @@ void FMTownsCommon::ForceRender(class TownsRender &render,class Outside_World &w
 {
 	render.Prepare(crtc);
 	render.damperWireLine=var.damperWireLine;
-	render.BuildImage(physMem.state.VRAM,crtc.GetPalette(),crtc.chaseHQPalette);
+	render.BuildImage(GetUsingVRAM(),crtc.GetPalette(),crtc.chaseHQPalette);
 	if(true==world.ImageNeedsFlip())
 	{
 		render.FlipUpsideDown();
@@ -1270,6 +1443,18 @@ void FMTownsCommon::ForceRender(class TownsRender &render,class Outside_World &w
 	windowInterface.UpdateImage(img);
 }
 
+const uint8_t *FMTownsCommon::GetUsingVRAM(void) const
+{
+	if(true==fmt3631.IsEnabled())
+	{
+		return fmt3631.state.vram.data();
+	}
+	else
+	{
+		return physMem.state.VRAM;
+	}
+}
+
 void FMTownsCommon::RenderQuiet(class TownsRender &render,bool layer0,bool layer1)
 {
 	render.Prepare(crtc);
@@ -1278,13 +1463,13 @@ void FMTownsCommon::RenderQuiet(class TownsRender &render,bool layer0,bool layer
 	auto palette=crtc.GetPalette();
 	ApplicationSpecificScreenshotOverride(render,palette);
 
-	render.BuildImage(physMem.state.VRAM,palette,crtc.chaseHQPalette);
+	render.BuildImage(GetUsingVRAM(),palette,crtc.chaseHQPalette);
 }
 
 void FMTownsCommon::RenderEntireVRAMLayerQuiet(class TownsRender &render,unsigned int layer)
 {
 	render.PrepareEntireVRAMLayer(crtc,layer);
-	render.BuildImage(physMem.state.VRAM,crtc.GetPalette(),crtc.chaseHQPalette);
+	render.BuildImage(GetUsingVRAM(),crtc.GetPalette(),crtc.chaseHQPalette);
 }
 
 bool FMTownsCommon::GetEleVolCDLeftEN(void) const
@@ -1358,14 +1543,14 @@ void FMTownsCommon::EnableDebugger(void)
 {
 	auto &cpu=CPU();
 	cpu.AttachDebugger(&debugger);
-	debugger.stop=false;
+	SetDebugBreakFlag(false);
 	cpu.enableCallStack=true;
 }
 void FMTownsCommon::DisableDebugger(void)
 {
 	auto &cpu=CPU();
 	cpu.DetachDebugger();
-	debugger.stop=false;
+	SetDebugBreakFlag(false);
 	cpu.enableCallStack=false;
 }
 
@@ -1941,5 +2126,52 @@ void FMTownsCommon::ApplicationSpecificScreenshotOverride(class TownsRender &ren
 	{
 	case TOWNS_APPSPECIFIC_DAIKOUKAIJIDAI2:
 		return Daikoukaijidai2_ScreenshotOverride(render,palette);
+	}
+}
+
+unsigned int FMTownsCommon::FindDOSSEG(void) const
+{
+	uint32_t foundBUGAt=0;
+	for(unsigned int addr=0; addr+3<=0xC0000; ++addr)
+	{
+		if(true==cpputil::Match(3,(const unsigned char *)"BUG",physMem.state.RAM.data()+addr))
+		{
+			foundBUGAt=addr;
+			break;
+		}
+	}
+	return foundBUGAt/0x10;
+}
+
+void FMTownsCommon::StealConsole(char c) const
+{
+	static ShiftJIS_UTF8 *su=nullptr;
+	if(nullptr==su)
+	{
+		su=ShiftJIS_UTF8::Singleton();
+	}
+
+	if(0!=var.lastConsoleSteal)
+	{
+		std::string s;
+		s.push_back(var.lastConsoleSteal);
+		s.push_back(c);
+
+		std::string u=su->SJIStoUTF8(s);
+		std::cout << u;
+
+		var.lastConsoleSteal=0;
+	}
+	else
+	{
+		unsigned char C=c;
+		if((0x81<=C && C<=0x9f) || (0xE0<=C && C<=0xFC))
+		{
+			var.lastConsoleSteal=c;
+		}
+		else
+		{
+			std::cout << c;
+		}
 	}
 }

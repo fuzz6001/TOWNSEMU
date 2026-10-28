@@ -5,6 +5,11 @@ set(TOWNSEMU_TEST ${CMAKE_CURRENT_SOURCE_DIR}/../../../TOWNSEMU_TEST)
 set(SYMTABLE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../symtables)
 set(TESTDATA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../testdata)
 
+set(TARGET_EXE $<TARGET_FILE:${TARGET_NAME}>)
+
+
+find_package(Python3 COMPONENTS Interpreter)
+
 
 add_executable(Tsugaru_CUI MACOSX_BUNDLE main.cpp ../resources/tsugaru_icon.rc)
 target_link_libraries(${TARGET_NAME} 
@@ -13,6 +18,7 @@ target_link_libraries(${TARGET_NAME}
 	townsargv
 	townsrender 
 	outside_world
+	osinit
 	fssimplewindow_connection
 )
 
@@ -1246,6 +1252,33 @@ add_test(
 )
 
 add_test(
+	NAME WINDOWS3.1L12_FMT3631
+	COMMAND
+		${TARGET_NAME}
+		"${TOWNSEMU_TEST}/ROM_MX"
+		-HIGHFIDELITY
+		-COPYFILE
+		"${TOWNSEMU_TEST}/Win3.1/WIN3.1L12_P9000.h0"
+		"${CMAKE_BINARY_DIR}/Win3.1.h0"
+		-CMOS
+		"${TOWNSEMU_TEST}/Win3.1/CMOS_CTEST.BIN"
+		-HD0
+		"${CMAKE_BINARY_DIR}/Win3.1.h0"
+		-FD0
+		"${TOWNSEMU_TEST}/Win3.1/WIN3.1L12_CTEST_ENH.D77"
+		-BOOTKEY
+		H0
+		-MEMSIZE 8
+		-FMT3631
+		-DEBUG
+		-UNITTEST
+		-SHAREDDIR
+		${CMAKE_CURRENT_SOURCE_DIR}/../../testc/WIN3.1/BOOT
+		-DONTAUTOSAVECMOS
+		-DAMPERWIRELINE
+)
+
+add_test(
 	NAME WINDOWS3.1L12_FPU
 	COMMAND
 		${TARGET_NAME}
@@ -1331,6 +1364,62 @@ add_test(
 )
 
 add_test(
+	NAME WINDOWS95_FMT3631
+	COMMAND
+		${TARGET_NAME}
+		"${TOWNSEMU_TEST}/ROM_MX"
+		-HIGHFIDELITY
+		-HIGHRESPCM
+		-USEFPU
+		-COPYFILE
+		"${TOWNSEMU_TEST}/Win95/WIN95_P9000.h0"
+		"${CMAKE_BINARY_DIR}/Win95.h0"
+		-HD0
+		"${CMAKE_BINARY_DIR}/Win95.h0"
+		-SHAREDDIR
+		"${CMAKE_CURRENT_SOURCE_DIR}/../../testc/WIN95/BOOT"
+		-CMOS
+		"${TOWNSEMU_TEST}/Win95/CMOS.BIN"
+		-DONTAUTOSAVECMOS
+		-DEBUG
+		-UNITTEST
+		-FASTSCSI
+		-MEMSIZE
+		32
+		-BOOTKEY
+		H0
+		-FMT3631
+)
+
+add_test(
+	NAME WINDOWS95_FMT3632
+	COMMAND
+		${TARGET_NAME}
+		"${TOWNSEMU_TEST}/ROM_MX"
+		-HIGHFIDELITY
+		-HIGHRESPCM
+		-USEFPU
+		-COPYFILE
+		"${TOWNSEMU_TEST}/Win95/WIN95_P9100.h0"
+		"${CMAKE_BINARY_DIR}/Win95.h0"
+		-HD0
+		"${CMAKE_BINARY_DIR}/Win95.h0"
+		-SHAREDDIR
+		"${CMAKE_CURRENT_SOURCE_DIR}/../../testc/WIN95/BOOT"
+		-CMOS
+		"${TOWNSEMU_TEST}/Win95/CMOS.BIN"
+		-DONTAUTOSAVECMOS
+		-DEBUG
+		-UNITTEST
+		-FASTSCSI
+		-MEMSIZE
+		32
+		-BOOTKEY
+		H0
+		-FMT3632
+)
+
+add_test(
 	NAME WINDOWS95_FPU
 	COMMAND
 		${TARGET_NAME}
@@ -1358,7 +1447,7 @@ add_test(
 )
 
 add_test(
-	NAME WINDOWS95_FPU_EMULATION
+	NAME WINDOWS95_NO_FPU_EMULATION
 	COMMAND
 		${TARGET_NAME}
 		"${TOWNSEMU_TEST}/ROM_MX"
@@ -1483,4 +1572,126 @@ add_test(
 		-POWEROFFAT
 		00C7:000018AC@5
 		-DAMPERWIRELINE
+)
+
+# need:
+# pip install pyftpdlib
+add_test(
+	NAME NET_HTGET
+	COMMAND
+		Python3::Interpreter
+		"${CMAKE_SOURCE_DIR}/tests/http_client.py"
+		"${CMAKE_SOURCE_DIR}/tests/html"
+		"${TARGET_EXE}"
+		"${TOWNSEMU_TEST}/ROM_DEV"
+		-COPYFILE
+		"${TOWNSEMU_TEST}/DISKIMG/NETTEST.BIN"
+		"${CMAKE_BINARY_DIR}/NETTEST.BIN"
+		-REX3586
+		-FD0
+		"${CMAKE_BINARY_DIR}/NETTEST.BIN"
+		-BOOTKEY
+		F0
+		-CONSCMD
+		"htget -o index.html http://10.0.2.172:8080/index.html"
+		-CONSCMD
+		"IF EXIST INDEX.HTML SUCCESS"
+		-CONSCMD
+		"FAIL"
+		-UNITTEST
+	)
+
+# Turned out, WATTCP/FTP accepts redirection.  Problem solved.
+add_test(
+	NAME NET_FTP
+	COMMAND
+		Python3::Interpreter
+		"${CMAKE_SOURCE_DIR}/tests/ftp_client.py"
+		"${CMAKE_SOURCE_DIR}/tests/html"
+		"${TARGET_EXE}"
+		"${TOWNSEMU_TEST}/ROM_DEV"
+		-COPYFILE
+		"${TOWNSEMU_TEST}/DISKIMG/NETTEST.BIN"
+		"${CMAKE_BINARY_DIR}/NETTEST.BIN"
+		-REX3586
+		-FD0
+		"${CMAKE_BINARY_DIR}/NETTEST.BIN"
+		-BOOTKEY
+		F0
+		-CONSCMD
+		"echo testuser > param"
+		-CONSCMD
+		"echo password >> param"
+		-CONSCMD
+		"echo dir >> param"
+		-CONSCMD
+		"echo get index.html >> param"
+		-CONSCMD
+		"echo dir >> param"
+		-CONSCMD
+		"echo bye >> param"
+		-CONSCMD
+		"ftp -port 2121 10.0.2.172 < param"
+		-CONSCMD
+		"IF EXIST INDEX.HTML SUCCESS"
+		-CONSCMD
+		"FAIL"
+		-UNITTEST
+	)
+
+# -PORTFWD 21 2122 option forwards TOWNS's port 21 to Host's 2122
+add_test(
+	NAME NET_FTPSVR
+	COMMAND
+		Python3::Interpreter
+		"${CMAKE_SOURCE_DIR}/tests/ftp_server.py"
+		"${CMAKE_BINARY_DIR}/tests"
+		"${TARGET_EXE}"
+		"${TOWNSEMU_TEST}/ROM_DEV"
+		-COPYFILE
+		"${TOWNSEMU_TEST}/DISKIMG/NETTEST.BIN"
+		"${CMAKE_BINARY_DIR}/NETTEST.BIN"
+		-REX3586
+		-PORTFWD 21 2122
+		-FD0
+		"${CMAKE_BINARY_DIR}/NETTEST.BIN"
+		-BOOTKEY
+		F0
+		-CONSCMD
+		"FTPSRV"
+		-UNITTEST
+	)
+
+
+
+add_test(
+	NAME WINDOWS95_IE4_FINAL_SETUP_TAKES_10_MINUTES
+	COMMAND
+		${TARGET_NAME}
+		"${TOWNSEMU_TEST}/ROM_MX"
+		-HIGHFIDELITY
+		-USEFPU
+		-COPYFILE
+		"${TOWNSEMU_TEST}/Win95.IE4/Win95.IE4.h0"
+		"${CMAKE_BINARY_DIR}/Win95.h0"
+		-COPYFILE
+		"${TOWNSEMU_TEST}/Win95.IE4/CMOS.IE4.bin"
+		"${CMAKE_BINARY_DIR}/COMS.IE4.bin"
+		-HD0
+		"${CMAKE_BINARY_DIR}/Win95.h0"
+		-CMOS
+		"${CMAKE_BINARY_DIR}/COMS.IE4.bin"
+		-DONTAUTOSAVECMOS
+		-DEBUG
+		-UNITTEST
+		-FASTSCSI
+		-FREQ 80
+		-MEMSIZE
+		64
+		-BOOTKEY
+		H0
+		# If everything goes well, it will reach TGMOUSE, which will start writing mouse coordinate to I/O 2387H
+		# 2386H is also used by TGMOUSE.
+		-POWEROFFONIOW
+		2387H
 )

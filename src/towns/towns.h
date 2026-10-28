@@ -51,6 +51,9 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include "townsparam.h"
 #include "highrespcm.h"
 
+#include "rex3586.h"
+#include "fmt3631.h"
+
 #include "eventlog.h"
 
 #include "outside_world.h"
@@ -194,10 +197,12 @@ public:
 		unsigned int TBIOS_mouseInfoOffset=0;
 		unsigned int MOS_work_linearAddr=0;
 		unsigned int MOS_work_physicalAddr=0;
+		// This offset is only for XY coord.  Don't use it for other purposes.
+		// This is required for Fujitsu Habitat, which places MOS_work close to the page boundary.
 		unsigned int MOS_pulsePerPixelH=8,MOS_pulsePerPixelV=8;
 		int mouseIntegrationSpeed=256;
 
-		unsigned short DOSSEG=TOWNS_DOS_SEG; // for V2.1 L20 IO.SYS
+		unsigned short DOSSEG=0;
 		unsigned short DOSVER=0;
 		unsigned short DOSLOLOFF=0;
 		unsigned short DOSLOLSEG=0;
@@ -257,6 +262,23 @@ public:
 	{
 	public:
 		unsigned int freeRunTimerShift;
+
+		/*!
+		VMFlags
+		  Used for communicating with the guest OS.
+		  Copied to EAX when TOWNS_VMIF_CMD_GET_VMFLAGS(0x0E) is written to I/O TOWNSIO_VM_HOST_IF_CMD_STATUS(0x2386).
+		  bit 0:  FreeTOWNSOS (Tsugaru OS)'s IO.SYS will check this flag, and will write console output to I/O 0E9h if set.
+		*/
+		uint32_t VMFlags=0;
+
+		/*!
+		consoleCmd
+		  When TOWNS_VMIF_CMD_RELEASE_CONSOLE_CMD(0x0F) is written to I/O TOWNSIO_VM_HOST_IF_CMD_STATUS(0x2386),
+		  it is sent to autoType of TownsKeyboard one by one.  FreeTOWNSOS's IO.SYS will do so to receive commands.
+		*/
+		std::vector <std::string> consoleCmd;
+
+		mutable char lastConsoleSteal=0;
 
 		uint64_t nextTimeSync; // Used from TownsThread.
 
@@ -373,7 +395,10 @@ public:
 		i486DXCommon::FarPointer powerOffAt;
 
 
+		/*! Last known host mouse state.
+		*/
 		int lastKnownMouseX=0,lastKnownMouseY=0;
+		bool lastKnownMouseLBtn=false,lastKnownMouseRBtn=false;
 
 
 		/*! I think this flag is a dirty way of dealing with the state load, but TownsThread needs to know
@@ -445,6 +470,7 @@ public:
 	TownsCDROM cdrom;
 	TownsPhysicalMemory physMem;
 	TownsCRTC crtc;
+	FMT3631 fmt3631;
 	TownsSprite sprite;
 	TownsFDC fdc;
 	TownsSCSI scsi;
@@ -457,6 +483,7 @@ public:
 	TownsVnDrv vndrv;
 	TownsTgDrv tgdrv;
 	TownsHighResPCM highResPCM;
+	RatocREX3586 rex3586;
 	// Machine State <<
 
 	unsigned int townsType;
@@ -531,6 +558,12 @@ public:
 	unsigned int IdentifyTBIOS(unsigned int biosPhysicalBaseAddr) const;
 
 
+	unsigned int FindDOSSEG(void) const;
+
+
+	void StealConsole(char c) const;
+
+
 	unsigned int FindTBIOSMouseInfoOffset(unsigned int tbiosVersion,unsigned int biosPhysicalBaseAddr) const;
 
 
@@ -590,6 +623,10 @@ public:
 	*/
 	void SetMouseButtonState(bool lButton,bool rButton);
 
+	/*! Tell VM the last known host mouse position.  Separate from ControlMouse.
+	*/
+	void NotifyLastKnownHostMousePosition(int mx,int my);
+
 
 	/*! Set Game-Pad State.  Called from Outside_World.
 	*/
@@ -620,6 +657,10 @@ public:
 	    Returns false if it could not get the coordinate.
 	*/
 	bool GetMouseCoordinate(int &mx,int &my,unsigned int tbiosid) const;
+
+	/*!
+	*/
+	uint32_t GetMouseXYOffsetInMOSWork(unsigned int tbiosid) const;
 
 
 	/*! After constructing FMTownsCommon class, call this function to specify where to look
@@ -698,6 +739,17 @@ public:
 		}
 	}
 
+	/* One application was confirmed to be updating CRTC in VSYNC INT handler.
+	   EGB function 02H does not CLI, so VSYNC INT could come in any time while EGB is updating CRTC.
+	   In the worst case, it could come in after EGB writing to I/O 440H (address latch) before writing to I/O 442H (CRTC data).
+	   But the application was running on the actual hardware because EGB function 02H busy-waits
+	   VSYNC then updated CRTC registers.
+	   To emulate this, VSYNC INT must come in exactly at the raising edge of VSYNC I/O bit.
+	   This function is called from CRTC when the application reads VSYNC I/O so that VSYNC INT will be synchronized with
+	   the I/O reading.
+	*/
+	void PreponeNextFastDevicePollingTime(int64_t timeInNanosec);
+
 	/*! Check Rendering Timer and render if townsTime catches up with the timer.
 	    It will increment rendering timer.
 	    Returns true if rendered.
@@ -708,6 +760,11 @@ public:
 	    It does not update the rendering timer.
 	*/
 	void ForceRender(class TownsRender &render,Outside_World &world,Outside_World::WindowInterface &windowInterface);
+
+
+	/*! It can be the VRAM on FMT-3631 when it is enabled.
+	*/
+	const uint8_t *GetUsingVRAM(void) const;
 
 
 	/*! Render, but not transfer to the window.

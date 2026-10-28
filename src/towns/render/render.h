@@ -29,7 +29,7 @@ private:
 	unsigned int wid,hei;
 	std::vector <unsigned char> rgba;
 
-
+	bool fmt3631;
 	bool highResCRTC;
 	bool crtcIsSinglePageMode;
 	bool crtcShowPage[2];
@@ -142,6 +142,9 @@ public:
 	void Render16Bit(const TownsCRTC::Layer &layer,const unsigned char VRAM[],bool transparent);
 	template <class OFFSETTRANS>
 	void Render24Bit(const TownsCRTC::Layer &layer,const unsigned char VRAM[],bool transparent);
+
+	// For FMT3631
+	void Render32Bit(const TownsCRTC::Layer &layer,const unsigned char VRAM[]);
 };
 
 

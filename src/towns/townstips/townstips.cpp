@@ -61,8 +61,10 @@ std::vector <std::string> TownsTips::GetTips(void)
 	);
 
 	tips.push_back(
-		"When mouse cursor does not move, or mouse goes crazy, you can stabilize\n"
-		"it by controlling mouse by keyboard arrow keys, or a USB game pad.\n"
+		"If the mouse does not work, or jumping around, or uncontrollable, try differential\n"
+		"mouse integration.  It is enabled when you press mouse middle button, and disabled"
+		"when you press the middle button again.\n"
+		"Also you can control mouse by keyboard arrow keys, or a USB game pad.\n"
 		"Go to Game-Port options, and select appropriate mouse mode.\n"
 	);
 
@@ -86,6 +88,32 @@ std::vector <std::string> TownsTips::GetTips(void)
 		"To prevent crash, please select CPU speed 4 to 5MHz\n"
 		"Because of this bug, I did not know Rocket Ranger had such a great soundtrack\n"
 		"until 2024.\n"
+	);
+
+	tips.push_back(
+		"Did you know that you can select boot device by holding down:\n"
+		"C+D keys or Pad A button for CD\n"
+		"F+0 keys or Pad B button for Floppy Drive 0\n"
+		"F+1 keys for Floppy Drive 1\n"
+		"H+0 keys for SCSI Drive 0\n"
+		"H+1 keys for SCSI Drive 1\n"
+		"H+2 keys for SCSI Drive 2\n"
+		"H+3 keys for SCSI Drive 3\n"
+		"H+4 keys for SCSI Drive 4\n"
+		"I+C+M keys for IC Memory Card\n"
+		"?"
+		"You can also use temporary boot-device menu by holding down\n"
+		"Pad A+B buttons.\n"
+		"Also D+E+B+U+G keys will open the debug menu.\n"
+		"Valid after FM TOWNS II CX and later models."
+		"In Tsugaru, you can use this feature from the BOOT tab in the GUI\n"
+		"or -BOOTKEY option in the CUI.\n"
+	);
+
+	tips.push_back(
+		"Tsugaru does not recognize a raw floppy disk image unless the disk image size is\n"
+		"exactly 1232KB (1261568 bytes), 1440KB (1474560 bytes), 640KB (655360 bytes), or\n"
+		"720KB (737280 bytes).  If the size is different by 1 byte, it does not recognize it.\n"
 	);
 
 	return tips;

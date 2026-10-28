@@ -841,6 +841,45 @@ unsigned int i486DXCommon::FPUState::FIDIV_m32int(i486DXCommon &cpu,const unsign
 	}
 	return 0;
 }
+unsigned int i486DXCommon::FPUState::FICOM_m32int(i486DXCommon &cpu,const unsigned char byteData[])
+{
+	if(true==enabled)
+	{
+		double src = (double)IntFrom32Bit(byteData);
+		double from=ST(cpu).value;
+
+		statusWord&=~(STATUS_C0|STATUS_C2|STATUS_C3);
+
+		if(isnan(from))
+		{
+			statusWord|=(STATUS_C0|STATUS_C2|STATUS_C3);
+		}
+		else if(from>src)
+		{
+		}
+		else if(from<src)
+		{
+			statusWord|=(STATUS_C0);
+		}
+		else // if(from==src)
+		{
+			statusWord|=(STATUS_C3);
+		}
+
+		return 16;
+	}
+	return 0;
+}
+unsigned int i486DXCommon::FPUState::FICOMP_m32int(i486DXCommon &cpu,const unsigned char byteData[])
+{
+	if(true==enabled)
+	{
+		FICOM_m32int(cpu,byteData);
+		Pop(cpu);
+		return 16;
+	}
+	return 0;
+}
 unsigned int i486DXCommon::FPUState::FIDIVR_m16int(i486DXCommon &cpu,const unsigned char byteData[])
 {
 	if(true==enabled)
@@ -1574,6 +1613,7 @@ unsigned int i486DXCommon::FPUState::RestoreEnv(unsigned int operandSize,bool is
 		//cpputil::GetWord(data+12);
 		return 14;
 	}
+	return 0;
 }
 std::vector <uint8_t> i486DXCommon::FPUState::FSAVE(const i486DXCommon &cpu,unsigned int operandSize) const
 {
@@ -1701,6 +1741,7 @@ unsigned int  i486DXCommon::FPUState::PopulateFPUEnv(uint8_t *data,unsigned int 
 		cpputil::PutWord(data+12,0);
 		return 14;
 	}
+	return 0;
 }
 void i486DXCommon::FPUState::RestoreFPUEnv(const uint8_t *data,unsigned int operandSize,bool isInRealMode)
 {

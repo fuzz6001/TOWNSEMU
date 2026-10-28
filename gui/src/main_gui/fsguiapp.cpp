@@ -452,8 +452,26 @@ void FsGuiMainCanvas::MakeMainMenu(void)
 		subMenu->AddTextItem(0,FSKEY_S,ui("/towns/start","Start Virtual Machine"))->BindCallBack(&THISCLASS::VM_Start,this);
 		subMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/startandclosegui","Start and Close GUI"))->BindCallBack(&THISCLASS::VM_StartAndCloseGUI,this);
 		subMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/reset","Reset Virtual Machine"))->BindCallBack(&THISCLASS::VM_Reset,this);
+		{
+			auto *rebootSubMenu=subMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom","Reboot Virtual Machine From:"))->AddSubMenu();
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/cd","Internal CD"))->BindCallBack(&THISCLASS::VM_RebootFromCD,this);
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/f0","FD0"))->BindCallBack(&THISCLASS::VM_RebootFromFD0,this);
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/f1","FD0"))->BindCallBack(&THISCLASS::VM_RebootFromFD1,this);
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/f2","FD0"))->BindCallBack(&THISCLASS::VM_RebootFromFD2,this);
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/f3","FD0"))->BindCallBack(&THISCLASS::VM_RebootFromFD3,this);
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/h0","SCSI ID 0"))->BindCallBack(&THISCLASS::VM_RebootFromSCSI0,this);
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/h1","SCSI ID 1"))->BindCallBack(&THISCLASS::VM_RebootFromSCSI1,this);
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/h2","SCSI ID 2"))->BindCallBack(&THISCLASS::VM_RebootFromSCSI2,this);
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/h3","SCSI ID 3"))->BindCallBack(&THISCLASS::VM_RebootFromSCSI3,this);
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/h4","SCSI ID 4"))->BindCallBack(&THISCLASS::VM_RebootFromSCSI4,this);
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/icm","IC Memory Card"))->BindCallBack(&THISCLASS::VM_RebootFromICM,this);
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/debug","DEBUG mode"))->BindCallBack(&THISCLASS::VM_RebootDEBUG,this);
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/pada","Internal CD (by PAD A)"))->BindCallBack(&THISCLASS::VM_RebootFromPADA,this);
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/padb","FD0 (by PAD B)"))->BindCallBack(&THISCLASS::VM_RebootFromPADA,this);
+			rebootSubMenu->AddTextItem(0,FSKEY_NULL,ui("/towns/rebootfrom/padab","BOOT MENU"))->BindCallBack(&THISCLASS::VM_RebootFromPADAB,this);
+		}
 		subMenu->AddTextItem(0,FSKEY_Q,ui("/towns/poweroff","Power Off"))->BindCallBack(&THISCLASS::VM_PowerOff,this);
-		subMenu->AddTextItem(0,FSKEY_P,ui("/towns/pause","Pause"))->BindCallBack(&THISCLASS::VM_Pause,this);
+		// subMenu->AddTextItem(0,FSKEY_P,ui("/towns/pause","Pause"))->BindCallBack(&THISCLASS::VM_Pause,this);  Realized PAUSE menu was not doing anything.
 		subMenu->AddTextItem(0,FSKEY_R,ui("/towns/resume","Resume"))->BindCallBack(&THISCLASS::VM_Resume,this);
 
 		{
@@ -624,7 +642,7 @@ void FsGuiMainCanvas::OnInterval(void)
 		int key;
 		while(FSKEY_NULL!=(key=FsInkey()))
 		{
-			if(pauseResumeKey==key)
+			if(pauseResumeKey==key && true==IsVMRunning())
 			{
 				VM_Resume(nullptr);
 			}
@@ -814,9 +832,9 @@ void FsGuiMainCanvas::Run(void)
 }
 
 template <class VMClass>
-void FsGuiMainCanvas::ReallyRunWithinSameProcess(VMClass &VM)
+void FsGuiMainCanvas::ReallyRunWithinSameProcess(VMClass &VM,const TownsProfile &profileIn)
 {
-	VM.profile=profileDlg->GetProfile();
+	VM.profile=profileIn;
 	if(""==VM.profile.CMOSFName)
 	{
 		VM.profile.CMOSFName=GetCMOSFileName();
@@ -845,7 +863,33 @@ bool FsGuiMainCanvas::ReallyRun(bool usePipe)
 		return false;
 	}
 
-	auto missing=CheckMissingROMFiles();
+	auto profile=profileDlg->GetProfile();
+
+	std::vector <std::string> missing;
+	if(""!=profile.ROMPath)
+	{
+		missing=CheckMissingROMFiles(profile);
+	}
+	else
+	{
+		profile.ROMPath="${progdir}";
+		missing=CheckMissingROMFiles(profile);
+		if(0<missing.size())
+		{
+			profile.ROMPath="${profiledir}";
+			missing=CheckMissingROMFiles(profile);
+			if(0<missing.size())
+			{
+				char *cwd=getcwd(NULL,0);
+				if(NULL!=cwd)
+				{
+					profile.ROMPath=cwd;
+					missing=CheckMissingROMFiles(profile);
+					free(cwd);
+				}
+			}
+		}
+	}
 	if(0<missing.size())
 	{
 		std::string msg;
@@ -862,7 +906,6 @@ bool FsGuiMainCanvas::ReallyRun(bool usePipe)
 	}
 
 
-	auto profile=profileDlg->GetProfile();
 	separateProcess=profile.separateProcess; // This is the only chance to change this flag.
 
 	{
@@ -921,11 +964,11 @@ bool FsGuiMainCanvas::ReallyRun(bool usePipe)
 	{
 		if(i486DXCommon::HIGH_FIDELITY==profile.CPUFidelityLevel)
 		{
-			ReallyRunWithinSameProcess(VMHighFidelity);
+			ReallyRunWithinSameProcess(VMHighFidelity,profile);
 		}
 		else
 		{
-			ReallyRunWithinSameProcess(VMDefaultFidelity);
+			ReallyRunWithinSameProcess(VMDefaultFidelity,profile);
 		}
 	}
 
@@ -1139,7 +1182,7 @@ YsVec2i FsGuiMainCanvas::GetGUIDimension(void) const
 	return dim;
 }
 
-std::vector <std::string> FsGuiMainCanvas::CheckMissingROMFiles(void) const
+std::vector <std::string> FsGuiMainCanvas::CheckMissingROMFiles(const TownsProfile &profile) const
 {
 	auto specialPath=MakeSpecialPathTable();
 
@@ -1152,7 +1195,7 @@ std::vector <std::string> FsGuiMainCanvas::CheckMissingROMFiles(void) const
 		"FMT_FNT.ROM",
 		"FMT_SYS.ROM",
 	};
-	std::string path=profileDlg->ROMDirTxt->GetString().c_str();
+	std::string path=profile.ROMPath;
 	for(auto file : ROMFName)
 	{
 		std::string ful=cpputil::MakeFullPathName(path,file);
@@ -2318,17 +2361,106 @@ void FsGuiMainCanvas::VM_Reset(FsGuiPopUpMenuItem *)
 		VM_Not_Running_Error();
 	}
 }
-void FsGuiMainCanvas::VM_Pause(FsGuiPopUpMenuItem *)
+
+void FsGuiMainCanvas::VM_RebootFromCD(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("CD");
+}
+
+void FsGuiMainCanvas::VM_RebootFromFD0(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("F0");
+}
+
+void FsGuiMainCanvas::VM_RebootFromFD1(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("F1");
+}
+
+void FsGuiMainCanvas::VM_RebootFromFD2(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("F2");
+}
+
+void FsGuiMainCanvas::VM_RebootFromFD3(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("F3");
+}
+
+void FsGuiMainCanvas::VM_RebootFromSCSI0(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("H0");
+}
+
+void FsGuiMainCanvas::VM_RebootFromSCSI1(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("H1");
+}
+
+void FsGuiMainCanvas::VM_RebootFromSCSI2(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("H2");
+}
+
+void FsGuiMainCanvas::VM_RebootFromSCSI3(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("H3");
+}
+
+void FsGuiMainCanvas::VM_RebootFromSCSI4(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("H4");
+}
+
+void FsGuiMainCanvas::VM_RebootFromICM(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("ICM");
+}
+
+void FsGuiMainCanvas::VM_RebootDEBUG(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("DEBUG");
+}
+
+void FsGuiMainCanvas::VM_RebootFromPADA(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("PADA");
+}
+
+void FsGuiMainCanvas::VM_RebootFromPADB(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("PADB");
+}
+
+void FsGuiMainCanvas::VM_RebootFromPADAB(FsGuiPopUpMenuItem *)
+{
+	VM_RebootFrom("PADAB");
+}
+
+void FsGuiMainCanvas::VM_RebootFrom(std::string bootKey)
 {
 	if(true==IsVMRunning())
 	{
-		SendVMCommand("PAU\n");
+		SendVMCommand("RESET "+bootKey+"\n");
+		VMMustResume=YSTRUE;
 	}
 	else
 	{
 		VM_Not_Running_Error();
 	}
 }
+
+// void FsGuiMainCanvas::VM_Pause(FsGuiPopUpMenuItem *)
+// {
+// 	if(true==IsVMRunning())
+// 	{
+// 		SendVMCommand("PAU\n");
+// 	}
+// 	else
+// 	{
+// 		VM_Not_Running_Error();
+// 	}
+// }
 void FsGuiMainCanvas::VM_Resume(FsGuiPopUpMenuItem *)
 {
 	if(true==IsVMRunning())

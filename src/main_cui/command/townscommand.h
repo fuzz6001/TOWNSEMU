@@ -126,6 +126,7 @@ public:
 
 		CMD_CRTC_PAGE,
 		CMD_CRTC_SWAP_FMRGVRAMPAGE,
+		CMD_CRTC_VRAMOFFSET,
 
 		CMD_CALCULATE,
 		CMD_STRING_TO_ASCII,
@@ -261,6 +262,11 @@ public:
 		ENABLE_TGDRV_MONITOR,
 		ENABLE_MOUSE_MONITOR,
 		ENABLE_DIFFERENTIAL_MOUSE_INTEGRATION,
+		ENABLE_DIRECT_TYPE_MODE,
+		ENABLE_CONSOLE_STEAL,
+		ENABLE_IOLOG,
+		ENABLE_FMT3631MON,
+		ENABLE_FMT3631SNEAK,
 	};
 
 	enum
@@ -312,6 +318,11 @@ public:
 		DUMP_HIGHRES_PCM,
 		DUMP_SAVESTATEM,
 		DUMP_TGDRV,
+		DUMP_IOLIST,
+		DUMP_LAN,
+		DUMP_IOLOG,
+		DUMP_FMT3631,
+		DUMP_FMT3631MORE,
 	};
 
 	enum
@@ -321,6 +332,7 @@ public:
 		BREAK_ON_DMAC_REQUEST,
 		BREAK_ON_FDC_COMMAND,
 		BREAK_ON_INT,
+		BREAK_ON_EXCEPTION_AT,
 		BREAK_ON_FOPEN,
 		BREAK_ON_CVRAM_READ,
 		BREAK_ON_CVRAM_WRITE,
@@ -349,6 +361,7 @@ public:
 		BREAK_ON_CALLSTACK_DEPTH,
 		BREAK_ON_FDC_READSECTOR,
 		BREAK_ON_FDC_READADDRESS,
+		BREAK_ON_UNSUPPORTED_FMT3631CMD,
 	};
 
 	enum
@@ -378,7 +391,8 @@ public:
 		int primaryCmd;
 	};
 
-	bool waitVM;
+	bool waitVM=false;
+	bool directTypeMode=false;
 
 	TownsCommandInterpreter();
 
@@ -395,6 +409,8 @@ public:
 	void Execute_Enable(FMTownsCommon &towns,Command &cmd,class Outside_World *outside_world);
 	void Execute_Disable(FMTownsCommon &towns,Command &cmd,class Outside_World *outside_world);
 	void Execute_Toggle(FMTownsCommon &towns,Command &cmd,class Outside_World *outside_world);
+
+	void Enable_Disable_ConsoleSteal(FMTownsCommon &towns,bool enable);
 
 	void Execute_AddBreakPoint(FMTownsCommon &towns,Command &cmd);
 	void Execute_AddBreakPointWithPassCount(FMTownsCommon &towns,Command &cmd);
@@ -438,6 +454,7 @@ public:
 
 	void Execute_CRTCPage(FMTownsCommon &towns,Command &cmd);
 	void Execute_CRTC_SwapFMRGVRAMPage(FMTownsCommon &towns,Command &cmd);
+	void Execute_CRTCVRAMOffset(FMTownsCommon &towns,Command &cmd);
 
 	void Execute_CMOSLoad(FMTownsCommon &towns,Command &cmd);
 	void Execute_CMOSSave(FMTownsCommon &towns,Command &cmd);

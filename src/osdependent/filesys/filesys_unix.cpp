@@ -118,7 +118,7 @@ void FileSys::FindClose(FindContext *find)
 {
 	find->Close();
 }
-FileSys::DirectoryEntry FileSys::FindFirst(std::string subPath,FindContext *context)
+FileSys::DirectoryEntry FileSys::FindFirst(std::string subPath,FindContext *context) const
 {
 	std::string path=MakeHostPath(ToHostEncoding(subPath));
 	DirectoryEntry ent;
@@ -143,6 +143,8 @@ FileSys::DirectoryEntry FileSys::FindFirst(std::string subPath,FindContext *cont
 }
 FileSys::DirectoryEntry FileSys::GetFileAttrib(std::string fileName) const
 {
+	AdjustSubPathForLongFileName(fileName);
+
 	std::string path=MakeHostPath(ToHostEncoding(fileName));
 
 	DirectoryEntry ent;
@@ -160,7 +162,7 @@ FileSys::DirectoryEntry FileSys::GetFileAttrib(std::string fileName) const
 
 	return ent;
 }
-FileSys::DirectoryEntry FileSys::FindNext(FindContext *context)
+FileSys::DirectoryEntry FileSys::FindNext(FindContext *context) const
 {
 	DirectoryEntry ent;
 	ent=context->Read(hostPath);
@@ -205,5 +207,12 @@ FileSys::DirectoryEntry FileSys::FindNext(FindContext *context)
 	{
 		return true;
 	}
+	return false;
+}
+bool FileSys::SetModifiedDateTime(
+	std::string fName,
+	unsigned int year,unsigned int month,unsigned int date,
+	unsigned int hour,unsigned int min,unsigned int sec)
+{
 	return false;
 }

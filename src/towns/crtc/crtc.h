@@ -21,6 +21,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #include "device.h"
 #include "cheapmath.h"
+#include "crtcbase.h"
 
 
 
@@ -53,7 +54,7 @@ CLKSEL
 
 
 
-class TownsCRTC : public Device
+class TownsCRTC : public Device, public TownsCrtcBase
 {
 public:
 	enum
@@ -97,6 +98,7 @@ public:
 		HIGHRES_REG_CTRL0   =0x000,   // Write 0 -> ?   1->enable highRes CRTC
 		HIGHRES_REG_PGCTRL  =0x001,   // bit1 0->1-Layer mode  1->2-Layer mode    bit9 ?
 		HIGHRES_REG_CTRL1   =0x004,   // Read bit0=HighResEnabled bit1=(Initial=1, WriteToBit1->0, HighResoDisabled->1)   Write bit1=1->bit0=0
+		                              // Windows 3.1 driver is writing 1 to this and expecting 1 back.  WTF.
 
 		HIGHRES_REG_DISPPAGE=0x005,   // Prob  bit0 PriorityPage   bit8 ShowPage0   bit9 ShowPage1
 		HIGHRES_REG_VSYNC1  =0x006,   // Prob  TBIOS checks the bit is flipping
@@ -148,24 +150,6 @@ public:
 	static const unsigned int CLKSELtoHz[4];
 	unsigned int CLKSELtoFreq[4];
 
-	class Layer
-	{
-	public:
-		unsigned int bitsPerPixel;
-		unsigned int highResRGBSwap; // Hopefully meaningful only in the 24-bit color mode.  Figured 2025/07/02
-		unsigned int VRAMAddr;
-		unsigned int VRAMOffset;
-		unsigned int FlipVRAMOffset;
-		unsigned int FMRGVRAMMask;
-		Vec2i originOnMonitor;
-		unsigned int VRAMHSkipBytes;
-		Vec2i sizeOnMonitor;
-		Vec2i VRAMCoverage1X;
-		Vec2i zoom2x;
-		unsigned int bytesPerLine;
-
-		unsigned int HScrollMask,VScrollMask;
-	};
 	class ScreenModeCache
 	{
 	public:
@@ -173,43 +157,6 @@ public:
 		Layer layer[2];
 		ScreenModeCache();
 		void MakeFMRCompatible(void);
-	};
-
-	class AnalogPalette
-	{
-	public:
-		unsigned int codeLatch;
-		Vec4ub plt16[2][16];
-		Vec4ub plt256[256];
-		void Reset(void);
-
-		void Set16(unsigned int page,unsigned int component,unsigned char v);
-		void Set256(unsigned int component,unsigned char v);
-		void SetRed(unsigned char v,unsigned int PLT); // PLT is (sifter[1]>>2)&3
-		void SetGreen(unsigned char v,unsigned int PLT);
-		void SetBlue(unsigned char v,unsigned int PLT);
-
-		unsigned char Get16(unsigned int page,unsigned int component) const;
-		unsigned char Get256(unsigned int component) const;
-		unsigned char GetRed(unsigned int PLT) const;
-		unsigned char GetGreen(unsigned int PLT) const;
-		unsigned char GetBlue(unsigned int PLT) const;
-
-		void Serialize(std::vector <unsigned char> &data) const;
-		void Deserialize(const unsigned char *&data);
-	};
-
-	class HardwareMouseCursor
-	{
-	public:
-		bool defining=false,defined=false;
-		uint32_t ptnCount=0;
-		uint32_t unknownValueReg8=0;
-		uint32_t X=0,Y=0;
-		uint32_t originX=0,originY=0;
-		uint8_t ANDPtn[512]={0},ORPtn[512]={0};
-
-		void Reset(void);
 	};
 
 	enum
@@ -329,6 +276,7 @@ public:
 
 	class FMTownsCommon *townsPtr;
 	class TownsSprite *spritePtr;
+	class FMT3631 *fmt3631;
 	State state;
 
 	bool monitorCRTC2=false;
@@ -337,18 +285,18 @@ public:
 
 	virtual const char *DeviceName(void) const{return "CRTC";}
 
-	TownsCRTC(class FMTownsCommon *ptr,class TownsSprite *spritePtr);
+	TownsCRTC(class FMTownsCommon *ptr,class TownsSprite *spritePtr,class FMT3631 *fmt3631);
 
 	void UpdateSpriteHardware(void);
 
 	enum
 	{
-		// VSYNC_CYCLE is 1670000, but it is close enough to 0x1000000(16777216)
-		VSYNC_CYCLE=         0x1000000,
+		// VSYNC_CYCLE is 16683350ns
+		VSYNC_CYCLE=          16683350,
 		// Measurement taken from actual FM TOWNS II MX hardware tells VSYNC lasts for 60us.
-		CRT_VERTICAL_DURATION=0x1000000-60000, // Time CRTC spends for drawing.  VSYNC_CYCLE-CRT_VERTICAL_DURATION gives duration of VSYNC.
+		CRT_VERTICAL_DURATION=VSYNC_CYCLE-60000, // Time CRTC spends for drawing.  VSYNC_CYCLE-CRT_VERTICAL_DURATION gives duration of VSYNC.
 		// HSYNC_CYCLE should be 32000, but it is close enough to 0x8000(32768)
-		HSYNC_CYCLE=            0x8000, // Not accurate.  Fixed at 31K
+		HSYNC_CYCLE=             31468, // Not accurate.  Fixed at 31K
 		CRT_HORIZONTAL_DURATION= 30000,
 	};
 
@@ -398,6 +346,7 @@ public:
 			}
 		}
 	}
+	void PreponeTownsNextFastDevicePollingTime(void) const;
 private:
 	void TurnOffVSYNCIRQ(void);
 	void TurnOnVSYNCIRQ(void);
@@ -505,10 +454,10 @@ public:
 
 	void MEMIOWriteFMRVRAMDisplayMode(unsigned char data);	// [2] pp.158
 
-	virtual void IOWriteByte(unsigned int ioport,unsigned int data);
-	virtual void IOWriteWord(unsigned int ioport,unsigned int data); // Default behavior calls IOWriteByte twice
-	virtual void IOWriteDword(unsigned int ioport,unsigned int data); // Default behavior calls IOWriteByte 4 times
-	virtual unsigned int IOReadByte(unsigned int ioport);
+	virtual void IOWriteByte(unsigned int ioport,unsigned int data) override;
+	virtual void IOWriteWord(unsigned int ioport,unsigned int data) override; // Default behavior calls IOWriteByte twice
+	virtual void IOWriteDword(unsigned int ioport,unsigned int data) override; // Default behavior calls IOWriteByte 4 times
+	virtual unsigned int IOReadByte(unsigned int ioport) override;
 
 	/* If high-reso crtc is enabled, bit15=0 enables High Res CRTC and disables conventional CRTC, or vise-versa.
 	*/
@@ -541,6 +490,10 @@ public:
 	std::vector <std::string> GetPaletteText(void) const;
 	std::vector <std::string> GetLowResPaletteText(const AnalogPalette &palette) const;
 
+
+	unsigned int GetHighResVRAMWidthInPixels(int page) const;
+	unsigned int GetHighResVRAMBitsPerPixel(int page) const;
+	unsigned int GetHighResPageVRAMAddressOffset(int page) const;
 
 	/*! Make High-Res mode Layer Info.
 	*/

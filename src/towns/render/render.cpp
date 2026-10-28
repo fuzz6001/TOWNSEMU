@@ -15,7 +15,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include <cstring>
 #include "cpputil.h"
 #include "render.h"
-
+#include "fmt3631.h"
 
 
 TownsRender::TownsRender()
@@ -70,9 +70,15 @@ void TownsRender::MakeOpaque(void)
 
 void TownsRender::Prepare(const TownsCRTC &crtc)
 {
+	fmt3631=crtc.fmt3631->IsEnabled();
+
 	frequency=crtc.GetHorizontalFrequency();
 	highResCRTC=crtc.state.highResCRTCEnabled;
-	if(true==highResCRTC)
+	if(true==fmt3631)
+	{
+		hardwareMouse=crtc.fmt3631->state.hwCursor;
+	}
+	else if(true==highResCRTC)
 	{
 		hardwareMouse=crtc.state.highResCrtcMouse;
 	}
@@ -95,8 +101,14 @@ void TownsRender::Prepare(const TownsCRTC &crtc)
 
 void TownsRender::PrepareEntireVRAMLayer(const TownsCRTC &crtc,int layer)
 {
+	fmt3631=crtc.fmt3631->IsEnabled();
+
 	highResCRTC=crtc.state.highResCRTCEnabled;
-	if(true==highResCRTC)
+	if(true==fmt3631)
+	{
+		hardwareMouse=crtc.fmt3631->state.hwCursor;
+	}
+	else if(true==highResCRTC)
 	{
 		hardwareMouse=crtc.state.highResCrtcMouse;
 	}
@@ -153,7 +165,11 @@ void TownsRender::BuildImage(const unsigned char VRAM[],const TownsCRTC::AnalogP
 
 	std::memset(rgba.data(),0,rgba.size());
 
-	if(true==crtcIsSinglePageMode)
+	if(true==fmt3631)
+	{
+		Render<VRAM0Trans>(0,crtcLayer[0],palette,chaseHQPalette,VRAM,false);
+	}
+	else if(true==crtcIsSinglePageMode)
 	{
 		if(true==crtcShowPage[0])
 		{
@@ -207,35 +223,37 @@ void TownsRender::BuildImage(const unsigned char VRAM[],const TownsCRTC::AnalogP
 		}
 	}
 
-	if(true==highResCRTC && true==hardwareMouse.defined)
+	if((true==highResCRTC || true==fmt3631) && true==hardwareMouse.defined)
 	{
-		for(int y=0; y<64; ++y)
+		auto DX=hardwareMouse.wid;
+		auto DY=DX;
+		if(true!=hardwareMouse.twoColorCursor)
 		{
-			uint8_t *ANDPtn=hardwareMouse.ANDPtn+8*y;
-			uint8_t *ORPtn=hardwareMouse.ORPtn+8*y;
-			uint8_t bit=0x80;
-			for(int x=0; x<64; ++x)
+			uint8_t *ANDPtn=hardwareMouse.ANDPtn;
+			uint8_t *ORPtn=hardwareMouse.ORPtn;
+			for(int y=0; y<DY; ++y)
 			{
-				uint32_t xOnScrn=hardwareMouse.X+x-hardwareMouse.originX;
-				uint32_t yOnScrn=hardwareMouse.Y+y-hardwareMouse.originY;
-				if(xOnScrn<wid && yOnScrn<hei)
+				uint8_t bit=0x80;
+				for(int x=0; x<DX; ++x)
 				{
-					if(0==(*ANDPtn&bit))
+					uint32_t xOnScrn=hardwareMouse.X+x-hardwareMouse.originX;
+					uint32_t yOnScrn=hardwareMouse.Y+y-hardwareMouse.originY;
+					if(xOnScrn<wid && yOnScrn<hei)
 					{
 						auto pixelPtr=rgba.data()+4*(wid*yOnScrn+xOnScrn);
-						if(0==(*ORPtn&bit))
+						if(0==(*ANDPtn&bit))
 						{
 							pixelPtr[0]=0;
 							pixelPtr[1]=0;
 							pixelPtr[2]=0;
 							pixelPtr[3]=255;
 						}
-						else
+						if(0!=(*ORPtn&bit))
 						{
-							pixelPtr[0]=255;
-							pixelPtr[1]=255;
-							pixelPtr[2]=255;
-							pixelPtr[3]=255;
+							pixelPtr[0]^=255;
+							pixelPtr[1]^=255;
+							pixelPtr[2]^=255;
+							// pixelPtr[3]=255;
 						}
 					}
 					bit>>=1;
@@ -243,6 +261,45 @@ void TownsRender::BuildImage(const unsigned char VRAM[],const TownsCRTC::AnalogP
 					{
 						++ANDPtn;
 						++ORPtn;
+						bit=0x80;
+					}
+				}
+			}
+		}
+		else // Two-color cursor
+		{
+			uint8_t *Ptn1=hardwareMouse.ANDPtn;
+			uint8_t *Ptn2=hardwareMouse.ORPtn;
+			for(int y=0; y<DY; ++y)
+			{
+				uint8_t bit=0x80;
+				for(int x=0; x<DX; ++x)
+				{
+					uint32_t xOnScrn=hardwareMouse.X+x-hardwareMouse.originX;
+					uint32_t yOnScrn=hardwareMouse.Y+y-hardwareMouse.originY;
+					if(xOnScrn<wid && yOnScrn<hei)
+					{
+						auto pixelPtr=rgba.data()+4*(wid*yOnScrn+xOnScrn);
+						if(0!=(*Ptn2&bit))
+						{
+							pixelPtr[0]=hardwareMouse.twoColor[0];
+							pixelPtr[1]=hardwareMouse.twoColor[1];
+							pixelPtr[2]=hardwareMouse.twoColor[2];
+							pixelPtr[3]=255;
+						}
+						else if(0!=(*Ptn1&bit))
+						{
+							pixelPtr[0]=hardwareMouse.twoColor[3];
+							pixelPtr[1]=hardwareMouse.twoColor[4];
+							pixelPtr[2]=hardwareMouse.twoColor[5];
+							pixelPtr[3]=255;
+						}
+					}
+					bit>>=1;
+					if(0==bit)
+					{
+						++Ptn1;
+						++Ptn2;
 						bit=0x80;
 					}
 				}
@@ -317,6 +374,9 @@ void TownsRender::Render(
 		break;
 	case 24:
 		Render24Bit<OFFSETTRANS>(layer,VRAM,transparent);
+		break;
+	case 32:
+		Render32Bit(layer,VRAM);
 		break;
 	}
 }
@@ -768,9 +828,23 @@ void TownsRender::Render16Bit(const TownsCRTC::Layer &layer,const unsigned char 
 				OFFSETTRANS::Trans(VRAMAddr);
 
 				unsigned short col16 = cpputil::GetWord(VRAM + VRAMAddr);
-				dst[0] = ((col16 >> 2) & 0xf8) | ((col16 >> 7) & 7);
-				dst[1] = ((col16 >> 7) & 0xf8) | ((col16 >> 12) & 7);
-				dst[2] = ((col16 << 3) & 0xf8) | ((col16 >> 2) & 7);
+				if(true!=layer.highColor565)
+				{
+					dst[0] = ((col16 >> 2) & 0xf8) | ((col16 >> 7) & 7);
+					dst[1] = ((col16 >> 7) & 0xf8) | ((col16 >> 12) & 7);
+					dst[2] = ((col16 << 3) & 0xf8) | ((col16 >> 2) & 7);
+				}
+				else
+				{
+					// GGGGGRRRRRRBBBBB
+					dst[0] = ((col16 >> 3) & 0xfc) | ((col16 >> 9) & 3);
+					dst[1] = ((col16 >> 8) & 0xf8) | ((col16 >> 13) & 7);
+					dst[2] = ((col16 << 3) & 0xf8) | ((col16 >> 2) & 7);
+				}
+				if(true!=layer.highColorGRB)
+				{
+					std::swap(dst[0],dst[1]); // TOWNS CRTC goes with GRB order.  FMT-3631 uses RGB order.
+				}
 				dst[3] = 255;
 				dst += 4;
 				if (0 == (--ZH))
@@ -920,6 +994,88 @@ void TownsRender::Render24Bit(const TownsCRTC::Layer &layer,const unsigned char 
 				ZHswitch=1-ZHswitch;
 				ZH=ZHsrc[ZHswitch];
 				inLineVRAMOffset+=3;
+			}
+		}
+
+		if(1<yStep)
+		{
+			auto copyPtr=dstLine+(4*this->wid);
+			for(unsigned int zv=1; zv<yStep; ++zv)
+			{
+				std::memcpy(copyPtr,dstLine,dst-dstLine);
+				copyPtr+=(4*this->wid);
+			}
+			lineVRAMOffset+=layer.bytesPerLine;
+		}
+		else
+		{
+			--ZV;
+			if(0==ZV)
+			{
+				ZV=ZV0;
+				lineVRAMOffset+=layer.bytesPerLine;
+			}
+		}
+	}
+}
+
+void TownsRender::Render32Bit(const TownsCRTC::Layer &layer,const unsigned char VRAM[])
+{
+	unsigned int VRAMBase=layer.VRAMAddr;
+	unsigned int VRAMOffsetVertical=(layer.VRAMOffset+layer.FlipVRAMOffset)&~layer.HScrollMask;
+	unsigned int VRAMOffsetHorizontal=(layer.VRAMOffset+layer.FlipVRAMOffset)&layer.HScrollMask;
+	const unsigned int VRAMHScrollMask=layer.HScrollMask;
+	const unsigned int VRAMVScrollMask=layer.VScrollMask;
+	unsigned int lineVRAMOffset=0;
+	const int ZHsrc[2]={layer.zoom2x.x()/2,(layer.zoom2x.x()+1)/2};  // For x.5 times zoom rate.
+	auto ZV0=layer.zoom2x.y()/2;
+	auto ZV=ZV0;
+
+	unsigned int RED=(layer.highResRGBSwap>>4)&3;
+	unsigned int GREEN=(layer.highResRGBSwap>>2)&3;
+	unsigned int BLUE=layer.highResRGBSwap&3;
+
+	const bool transparent=false;
+
+	// yStep should be 1 if transparent.
+	// If transparnet==true, there is a possibility that memcpy overwrites background pixels.
+	unsigned int yStep=(true!=transparent ? ZV0 : 1);
+	auto bottomY=this->hei-yStep;
+	for(int y=0; y<layer.sizeOnMonitor.y() && y+layer.originOnMonitor.y()<=bottomY; y+=yStep)
+	{
+		auto X=  layer.originOnMonitor.x();
+		auto Y=y+layer.originOnMonitor.y();
+		unsigned char *dstLine=rgba.data()+4*(Y*this->wid+X);
+		auto dst=dstLine;
+
+		unsigned int inLineVRAMOffset=layer.VRAMHSkipBytes;
+		int ZHswitch=0;
+		auto ZH=ZHsrc[ZHswitch];
+		for(int x=0; x<layer.sizeOnMonitor.x() && x+layer.originOnMonitor.x()<this->wid && inLineVRAMOffset<layer.bytesPerLine; x++)
+		{
+			unsigned int VRAMAddr=lineVRAMOffset+((inLineVRAMOffset+VRAMOffsetHorizontal)&VRAMHScrollMask);
+			VRAMAddr=VRAMBase+((VRAMAddr+VRAMOffsetVertical)&VRAMVScrollMask);
+			dst[0]=VRAM[VRAMAddr];
+			dst[1]=VRAM[VRAMAddr+1];
+			dst[2]=VRAM[VRAMAddr+2];
+			dst[3]=255;
+
+			if(0x06!=layer.highResRGBSwap)
+			{
+				auto R=dst[RED];
+				auto G=dst[GREEN];
+				auto B=dst[BLUE];
+				dst[0]=R;
+				dst[1]=G;
+				dst[2]=B;
+			}
+
+			dst+=4;
+			if(0==(--ZH))
+			{
+				ZHswitch=1-ZHswitch;
+				ZH=ZHsrc[ZHswitch];
+				inLineVRAMOffset+=4;
 			}
 		}
 

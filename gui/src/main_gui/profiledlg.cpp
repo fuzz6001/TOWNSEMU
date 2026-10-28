@@ -195,6 +195,12 @@ void ProfileDialog::Make(const UiText &ui)
 		scrnModeDrp->AddString("FULL SCREEN",YSFALSE);
 		scrnMaintainAspectBtn=AddTextButton(0,FSKEY_NULL,FSGUI_CHECKBOX,ui("/profile/main/maintainaspect","Maintain Aspect Ratio"),YSFALSE);
 
+		AddStaticText(0,FSKEY_NULL,ui("/profile/main/fmt3631","Windows Accelerator Card:"),YSTRUE);
+		fmt363xDrp=AddEmptyDropList(0,FSKEY_NULL,"",20,20,20,YSFALSE);
+		fmt363xDrp->AddString("None",YSTRUE);
+		fmt363xDrp->AddString("FMT-3631 (Power 9000)",YSFALSE);
+		fmt363xDrp->AddString("FMT-3632 (Power 9100)",YSFALSE);
+
 		AddStaticText(0,FSKEY_NULL,ui("/profile/main/model","Model:"),YSTRUE);
 
 		townsTypeDrp=AddEmptyDropList(0,FSKEY_NULL,"",20,20,20,YSFALSE);
@@ -711,6 +717,26 @@ void ProfileDialog::Make(const UiText &ui)
 		EndAddTabItem();
 	}
 
+	{
+		auto tabId=AddTab(tab,ui("/profile/LAN","LAN"));
+		BeginAddTabItem(tab,tabId);
+
+		enableLANBtn=AddTextButton(0,FSKEY_NULL,FSGUI_CHECKBOX,ui("/profile/LAN/enableLAN","Enable LAN Card (Ratoc REX3586)"),YSTRUE);
+
+		AddStaticText(0,FSKEY_NULL,
+			ui("profile/LAN/caution",
+			"!!! CAUTION !!!\n"
+			"Any operating systems run on FM TOWNS does not have the security features that meet\n"
+			"today's standard.  Any network transaction can be stolen by anyone monitoring the\n"
+			"packets.\n"
+			"ABSOLUTELY DO NOT TRANSMIT SENSITIVE INFORMATION over the network.\n"
+			"It is highly recommended to turn off TGDRV when using LAN feature of Tsugaru.\n"
+			"LAN is highly experimental at this point.  LAN status is not state-saved.\n")
+			,YSTRUE);
+
+		EndAddTabItem();
+	}
+
 	tab->SelectCurrentTab(mainTabId);
 
 	runBtn=AddTextButton(0,FSKEY_NULL,FSGUI_PUSHBUTTON,ui("/profile/start","START!"),YSTRUE);
@@ -851,6 +877,14 @@ void ProfileDialog::Make(const UiText &ui)
 				"if the mouse connected to game ports.\n"
 			);
 			break;
+		}
+	}
+	else if(fmt363xDrp==drp)
+	{
+		if(0!=fmt363xDrp->GetSelection())
+		{
+			mouseMaxXTxt->SetText("1280");
+			mouseMaxYTxt->SetText("1024");
 		}
 	}
 }
@@ -1030,7 +1064,7 @@ YsString ProfileDialog::GetDefaultCDImageFileName(void)  const
 	YsString str=CDImgTxt->GetString();
 	if(0==str.Strcmp(""))
 	{
-		str=MakeUpAnyImageFileName("*.CUE");
+		str=MakeUpAnyImageFileName("default.MDS");
 	}
 	return str;
 }
@@ -1039,27 +1073,34 @@ YsString ProfileDialog::GetDefaultStateFileName(void)    const
 	YsString str=startUpStateFNameTxt->GetString();
 	if(0==str.Strcmp(""))
 	{
-		str=MakeUpAnyImageFileName("*.tstate");
+		str=MakeUpAnyImageFileName("default.tstate");
 	}
 	return str;
 }
 YsString ProfileDialog::GetDefaultFDImageFileName(int i) const
 {
 	YsString str;
-	for(auto txt : FDImgTxt)
+	if(i<TownsProfile::NUM_FDDRIVES && nullptr!=FDImgTxt[i])
 	{
-		if(nullptr!=txt)
+		str=FDImgTxt[i]->GetString();
+	}
+	if(0==str.Strcmp(""))
+	{
+		for(auto txt : FDImgTxt)
 		{
-			str=txt->GetString();
-			if(0!=str.Strcmp(""))
+			if(nullptr!=txt)
 			{
-				break;
+				str=txt->GetString();
+				if(0!=str.Strcmp(""))
+				{
+					break;
+				}
 			}
 		}
 	}
 	if(0==str.Strcmp(""))
 	{
-		str=MakeUpAnyImageFileName("*.D77");
+		str=MakeUpAnyImageFileName("default.D77");
 	}
 	return str;
 }
@@ -1079,7 +1120,7 @@ YsString ProfileDialog::GetDefaultHDImageFileName(int i) const
 	}
 	if(0==str.Strcmp(""))
 	{
-		str=MakeUpAnyImageFileName("*.H0");
+		str=MakeUpAnyImageFileName("default.H0");
 	}
 	return str;
 }
@@ -1471,6 +1512,25 @@ TownsProfile ProfileDialog::GetProfile(void) const
 
 	profile.differentialMouseIntegration=(YSTRUE==diffMouseBtn->GetCheck());
 
+	profile.enableLAN=(YSTRUE==enableLANBtn->GetCheck());
+
+	switch(fmt363xDrp->GetSelection())
+	{
+	case 0:
+	default:
+		profile.fmt3631=false;
+		profile.fmt3632=false;
+		break;
+	case 1:
+		profile.fmt3631=true;
+		profile.fmt3632=false;
+		break;
+	case 2:
+		profile.fmt3631=false;
+		profile.fmt3632=true;
+		break;
+	}
+
 	return profile;
 }
 void ProfileDialog::SetProfile(const TownsProfile &profile)
@@ -1514,6 +1574,19 @@ void ProfileDialog::SetProfile(const TownsProfile &profile)
 		gamePortDrp[gameport]->SelectByString(FsGuiMainCanvas::GamePortEmulationTypeToHumanReadable(profile.gamePort[gameport]).c_str());
 		maxButtonHoldTimeTxt[gameport][0]->SetInteger(profile.maxButtonHoldTime[gameport][0]/1000000);
 		maxButtonHoldTimeTxt[gameport][1]->SetInteger(profile.maxButtonHoldTime[gameport][1]/1000000);
+	}
+
+	if(true==profile.fmt3631)
+	{
+		fmt363xDrp->Select(1);
+	}
+	else if(true==profile.fmt3632)
+	{
+		fmt363xDrp->Select(2);
+	}
+	else
+	{
+		fmt363xDrp->Select(0);
 	}
 
 	mouseIntegSpdSlider->SetPositionByScaledValue((double)profile.mouseIntegrationSpeed);
@@ -1736,6 +1809,8 @@ void ProfileDialog::SetProfile(const TownsProfile &profile)
 	RS232CtoTCPTxt->SetText(profile.RS232CtoTCPAddr.c_str());
 
 	diffMouseBtn->SetCheck(profile.differentialMouseIntegration ? YSTRUE : YSFALSE);
+
+	enableLANBtn->SetCheck(profile.enableLAN ? YSTRUE : YSFALSE);
 }
 
 void ProfileDialog::SetDefaultFMVolume(void)

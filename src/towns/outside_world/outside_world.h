@@ -228,6 +228,8 @@ public:
 	/*! Call this function to toggle host mouse cursor. */
 	virtual void ToggleMouseCursor(void){};
 
+	virtual void ShowMouseCursor(bool show){};
+
 
 	/*! Host-Key Label is implementation dependent.
 	*/
@@ -265,7 +267,7 @@ public:
 			bool needRender=false;
 			bool imageNeedsFlip=false;
 			TownsRender renderer;
-			unsigned char VRAMCopy[TOWNS_VRAM_SIZE];
+			unsigned char VRAMCopy[TOWNS_MAX_VRAM_SIZE];
 			TownsCRTC::AnalogPalette paletteCopy;
 			TownsCRTC::ChaseHQPalette chaseHQPaletteCopy;
 		};
@@ -300,6 +302,7 @@ public:
 		bool maintainAspect=true;
 
 		unsigned int windowModeOnStartUp=TownsStartParameters::WINDOW_NORMAL;
+		unsigned int windowSizeOnStartUp[2]={640,480}; // Valid only with WINDOW_SPECIFY_SIZE
 
 		bool closeWindow=false;  // Windows is closed from outside.
 

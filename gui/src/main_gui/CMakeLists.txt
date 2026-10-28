@@ -1,7 +1,7 @@
 set(TARGET_NAME "Tsugaru_GUI")
 set(IS_LIBRARY_PROJECT 0)
 set(EXE_TYPE MACOSX_BUNDLE)
-set(LIB_DEPENDENCY fslazywindow ysgl fsguilib fsguifiledialog fsguilib_gl1 ysport subproc towns townscommand townsdef townsprofile townsparam fssimplewindow_connection cpputil d77 diskimg townsoptions townstips uitxt)
+set(LIB_DEPENDENCY fslazywindow ysgl fsguilib fsguifiledialog fsguilib_gl1 ysport subproc towns townscommand townsdef townsprofile townsparam fssimplewindow_connection cpputil d77 diskimg townsoptions townstips uitxt osinit)
 set(INCLUDE_DEPENDENCY)
 set(OWN_HEADER_PATH .)
 set(SINGLE_TARGET 1)
@@ -346,6 +346,12 @@ if(DATA_FILE_LOCATION)
 endif()
 
 #YSEND
+
+
+
+set_target_properties(${TARGET_NAME} PROPERTIES
+    MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist
+)
 
 
 

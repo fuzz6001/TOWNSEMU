@@ -196,9 +196,9 @@ private:
 
 	bool ReallyRun(bool usePipe=true);
 	template <class VMClass>
-	void ReallyRunWithinSameProcess(VMClass &VM);
+	void ReallyRunWithinSameProcess(VMClass &VM,const TownsProfile &profile);
 	std::string FindTsugaruCUI(void) const;
-	std::vector <std::string> CheckMissingROMFiles(void) const;
+	std::vector <std::string> CheckMissingROMFiles(const TownsProfile &profile) const;
 	std::string GetCMOSFileName(void) const;
 
 	YsWString GetDefaultNewDiskImageFileName(void) const;
@@ -335,9 +335,25 @@ private:
 	void VM_Start(FsGuiPopUpMenuItem *);
 	void VM_StartAndCloseGUI(FsGuiPopUpMenuItem *);
 	void VM_Reset(FsGuiPopUpMenuItem *);
+	void VM_RebootFromCD(FsGuiPopUpMenuItem *);
+	void VM_RebootFromFD0(FsGuiPopUpMenuItem *);
+	void VM_RebootFromFD1(FsGuiPopUpMenuItem *);
+	void VM_RebootFromFD2(FsGuiPopUpMenuItem *);
+	void VM_RebootFromFD3(FsGuiPopUpMenuItem *);
+	void VM_RebootFromSCSI0(FsGuiPopUpMenuItem *);
+	void VM_RebootFromSCSI1(FsGuiPopUpMenuItem *);
+	void VM_RebootFromSCSI2(FsGuiPopUpMenuItem *);
+	void VM_RebootFromSCSI3(FsGuiPopUpMenuItem *);
+	void VM_RebootFromSCSI4(FsGuiPopUpMenuItem *);
+	void VM_RebootFromICM(FsGuiPopUpMenuItem *);
+	void VM_RebootDEBUG(FsGuiPopUpMenuItem *);
+	void VM_RebootFromPADA(FsGuiPopUpMenuItem *);
+	void VM_RebootFromPADB(FsGuiPopUpMenuItem *);
+	void VM_RebootFromPADAB(FsGuiPopUpMenuItem *);
+	void VM_RebootFrom(std::string bootKey);
 	void VM_PowerOff(FsGuiPopUpMenuItem *);
 	void VM_PowerOffConfirm(FsGuiDialog *dlg,int returnCode);
-	void VM_Pause(FsGuiPopUpMenuItem *);
+	// void VM_Pause(FsGuiPopUpMenuItem *);  Turned out this menu was not doing anything.
 	void VM_Resume(FsGuiPopUpMenuItem *);
 
 	void VM_1MHz(FsGuiPopUpMenuItem *);

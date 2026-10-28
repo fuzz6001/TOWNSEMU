@@ -67,9 +67,7 @@ inline void i486DXFidelityLayer <FIDELITY>::Interrupt(unsigned int INTNum,Memory
 
 					if(INT_GENERAL_PROTECTION!=INTNum) // Prevent infinite recursion.
 					{
-						unsigned int Ibit=2;
-						unsigned int EXTbit=0; // 1 if external interrupt source.
-						RaiseException(EXCEPTION_GP,INTNum*8+Ibit+EXTbit); // EXT -> [1] 9-8 Error Code
+						RaiseException(EXCEPTION_GP,INTNum*8+EXCEPTION_GP_FLAG_IDT); // EXT -> [1] 9-8 Error Code
 						HandleException(false,mem,numInstBytesForCallStack);  // <- This will shoot INT 0BH
 					}
 
@@ -90,8 +88,37 @@ inline void i486DXFidelityLayer <FIDELITY>::Interrupt(unsigned int INTNum,Memory
 				isINTGate=false;
 				break;
 			case DESCTYPE_TASK_GATE: // 0b0101: //"386 32-bit Task";
-				Abort("INT to 386 32-bit Task gate not supported");
-				return; // If abort, must return.  The trailing lines may cause seg fault. (Happened while booting OSASK for TOWNS)
+				{
+					std::cout << "INT to Task Gate  From=" << cpputil::Ustox(state.TR.value) << " To=" << cpputil::Ustox(desc.SEG) << "\n";
+
+					auto prevEFLAGS=state.EFLAGS;
+					state.CS().DPL=0; // Make it CPL0, and
+					state.EFLAGS&=~(EFLAGS_VIRTUAL86|EFLAGS_TRAP|EFLAGS_NESTED); // clear VM86 flag so that state can be saved and loaded.
+					state.mode=state.RecalculateMode();
+
+					auto prevTR=state.TR.value;
+					auto nextTR=desc.SEG;
+					SegmentRegister newTSS;
+					auto prevCPL=state.CS().DPL;
+					state.CS().DPL=0;
+					LoadSegmentRegister(newTSS,nextTR,mem);
+					state.CS().DPL=prevCPL;
+
+					SaveStateToTSS(mem,numInstBytesForReturn,prevEFLAGS,state.CS().value);
+
+					// The current task stays busy.  Only new task needs to be marked busy.  Done in SwitchTaskToTSS.
+
+					SwitchTaskToTSS(mem,newTSS,true,prevTR);
+					FIDELITY::MarkTaskRegisterBusy(*this,mem,nextTR,true);
+
+					state.EFLAGS|=EFLAGS_NESTED;
+
+					auto CR0=state.GetCR(0);
+					CR0|=CR0_TASK_SWITCHED;
+					SetCR(0,CR0);
+
+					return;
+				}
 				break;
 			case DESCTYPE_386_INT_GATE: // 0b1110: //"386 32-bit INT";
 				break;
@@ -127,7 +154,7 @@ inline void i486DXFidelityLayer <FIDELITY>::Interrupt(unsigned int INTNum,Memory
 			// If Software Interrupt && gateDPL<CPL, shoot GP exception.
 			if(true==SWI && gateDPL<CPL)
 			{
-				RaiseException(EXCEPTION_GP,INTNum*8); // What's +EXT?  ([1] pp.26-170)
+				RaiseException(EXCEPTION_GP,(INTNum*8)|EXCEPTION_GP_FLAG_IDT); // If INTNum*8, always set IDT flag. (If no IDT, it should be attempted CS selector.)
 				HandleException(false,mem,numInstBytesForCallStack);
 				return;
 			}
@@ -136,6 +163,8 @@ inline void i486DXFidelityLayer <FIDELITY>::Interrupt(unsigned int INTNum,Memory
 			{
 				SegmentRegister newCS;
 				LoadSegmentRegister(newCS,desc.SEG,mem);
+
+				FIDELITY::AdjustNewCSDPLonINT(newCS,newCS.GetType(),CPL); // When 3==CPL, and new CS is CONFORMING, DPL must stay 3.
 
 				if(newCS.DPL<CPL)
 				{
@@ -159,9 +188,13 @@ inline void i486DXFidelityLayer <FIDELITY>::Interrupt(unsigned int INTNum,Memory
 				}
 				else if(CPL<newCS.DPL)
 				{
-					Abort("Interrupt to lower-privilege level should raise exception.");
+					// If Conforming CS, above AdjustNewCSDPLonINT should make CPL==newCS.DPL.
+					// If this condition is true, then, it means the new CS is not a conforming CS.
+					std::cout << "Interrupt to lower-privilege level.\n";
+					RaiseException(EXCEPTION_GP,desc.SEG);
+					HandleException(false,mem,numInstBytesForCallStack);
+					return;
 				}
-
 
 				Push(mem,gateOperandSize,state.EFLAGS,state.CS().value,state.EIP+numInstBytesForReturn);
 				// Equivalent >>
@@ -194,22 +227,37 @@ inline void i486DXFidelityLayer <FIDELITY>::Interrupt(unsigned int INTNum,Memory
 					auto TempEFLAGS=state.EFLAGS;
 					auto TempSS=state.SS().value;
 					auto TempESP=state.ESP();
-					state.EFLAGS&=~(EFLAGS_VIRTUAL86|EFLAGS_TRAP);
+					state.EFLAGS&=~(EFLAGS_VIRTUAL86|EFLAGS_TRAP|EFLAGS_NESTED);
 
 					state.mode=state.RecalculateMode();
 
 					// if(fromInterruptGate)
 					{
-						state.EFLAGS&=~EFLAGS_INT_ENABLE;
+						state.EFLAGS&=~EFLAGS_INT_ENABLE; // Now can load CS.
 					}
 					// Is TR always 32-bit address size?
 					state.CS().DPL=0; // Change to CPL=0 before loading SS.
+
+					// If Destination CS is not available, shoot GP.  To be done.
+
+					i486DXCommon::SegmentRegister newCS;
+					LoadSegmentRegister(newCS,desc.SEG,mem);
+					// Destination needs to be non-conforming DPL 0.
+					if(0!=newCS.DPL || (SEGTYPE_CODE_NONCONFORMING_EXECONLY!=newCS.GetType() && SEGTYPE_CODE_NONCONFORMING_READABLE!=newCS.GetType()))
+					{
+						state.EFLAGS=TempEFLAGS; // Restore EFLAGS before raising exception.
+						state.CS().DPL=3; // Restore DPL before raising exception.
+						RaiseException(EXCEPTION_GP,desc.SEG);
+						HandleException(false,mem,numInstBytesForCallStack);
+						return;
+					}
+
 					LoadSegmentRegister(state.SS(),FetchWord(32,state.TR,TSS_OFFSET_SS0,mem),mem);
 					state.ESP()=FetchDword(32,state.TR,TSS_OFFSET_ESP0,mem);
 
-					Push(mem,32,state.GS().value,state.FS().value,state.DS().value);
-					Push(mem,32,state.ES().value,TempSS,TempESP);
-					Push(mem,32,TempEFLAGS,state.CS().value,state.EIP+numInstBytesForReturn);
+					Push(mem,gateOperandSize,state.GS().value,state.FS().value,state.DS().value);
+					Push(mem,gateOperandSize,state.ES().value,TempSS,TempESP);
+					Push(mem,gateOperandSize,TempEFLAGS,state.CS().value,state.EIP+numInstBytesForReturn);
 					// Equivalent>>
 					// Push32(mem,state.GS().value);
 					// Push32(mem,state.FS().value);
@@ -228,7 +276,7 @@ inline void i486DXFidelityLayer <FIDELITY>::Interrupt(unsigned int INTNum,Memory
 					NullifySegmentRegister(state.GS());
 
 					SetIPorEIP(gateOperandSize,desc.OFFSET);
-					LoadSegmentRegister(state.CS(),desc.SEG,mem);
+					state.CS()=newCS;
 				}
 			}
 		}
@@ -239,7 +287,7 @@ inline void i486DXFidelityLayer <FIDELITY>::Interrupt(unsigned int INTNum,Memory
 
 			if(INT_GENERAL_PROTECTION!=INTNum) // Prevent infinite recursion.
 			{
-				RaiseException(EXCEPTION_GP,INTNum*8); // What's +EXT?  ([1] pp.26-170)
+				RaiseException(EXCEPTION_GP,(INTNum*8)|EXCEPTION_GP_FLAG_IDT); // If INTNum*8, always set IDT flag. (If no IDT, it should be attempted CS selector.)
 				HandleException(false,mem,numInstBytesForCallStack);
 			}
 
@@ -365,9 +413,9 @@ unsigned int i486DXFidelityLayer <FIDELITY>::LoadSegmentRegister(SegmentRegister
 }
 
 template <class FIDELITY>
-void i486DXFidelityLayer <FIDELITY>::LoadTaskRegister(unsigned int value,const Memory &mem)
+void i486DXFidelityLayer <FIDELITY>::LoadTaskRegister(unsigned int selector,const Memory &mem)
 {
-	LoadSegmentRegister(state.TR,value,mem);
+	LoadSegmentRegister(state.TR,selector,mem);
 }
 
 template <class FIDELITY>
@@ -504,19 +552,17 @@ void i486DXFidelityLayer <FIDELITY>::Push16(Memory &mem,unsigned int value)
 {
 	FIDELITY fidelity;
 
-	NUM_BYTES_MASK;
 	auto addressSize=GetStackAddressingSize();
 	auto &ESP=state.ESP();
 
-	class FIDELITY::SavedESP savedESP;
-	fidelity.SaveESP(savedESP,addressSize,ESP);
+	auto savedESP=fidelity.SaveESP(addressSize,ESP);
 
 	const unsigned int bytesToStore=2;
 	ESP-=bytesToStore;
 
 	fidelity.RestoreESPHighWord(addressSize,ESP,savedESP);
 
-	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(numBytesMask[addressSize>>3]));
+	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(addressSize==16 ? 0xffff : 0xffffffff));
 	auto accessPtr=GetStackAccessPointer(mem,linearAddr,bytesToStore);
 
 	if(fidelity.CheckExceptionInHighFidelityMode(*this))
@@ -541,19 +587,17 @@ void i486DXFidelityLayer <FIDELITY>::Push32(Memory &mem,unsigned int value)
 {
 	FIDELITY fidelity;
 
-	NUM_BYTES_MASK;
 	auto addressSize=GetStackAddressingSize();
 	auto &ESP=state.ESP();
 
-	class FIDELITY::SavedESP savedESP;
-	fidelity.SaveESP(savedESP,addressSize,ESP);
+	auto savedESP=fidelity.SaveESP(addressSize,ESP);
 
 	const unsigned int bytesToStore=4;
 	ESP-=bytesToStore;
 
 	fidelity.RestoreESPHighWord(addressSize,ESP,savedESP);
 
-	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(numBytesMask[addressSize>>3]));
+	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(addressSize==16 ? 0xffff : 0xffffffff));
 	auto accessPtr=GetStackAccessPointer(mem,linearAddr,bytesToStore);
 
 	if(fidelity.CheckExceptionInHighFidelityMode(*this))
@@ -574,16 +618,14 @@ unsigned int i486DXFidelityLayer <FIDELITY>::Pop16(Memory &mem)
 {
 	FIDELITY fidelity;
 
-	NUM_BYTES_MASK;
 	unsigned int value;
 	auto addressSize=GetStackAddressingSize();
 	auto &ESP=state.ESP();
 	const unsigned int bytesToPop=2;
 
-	class FIDELITY::SavedESP savedESP;
-	fidelity.SaveESP(savedESP,addressSize,ESP);
+	auto savedESP=fidelity.SaveESP(addressSize,ESP);
 
-	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(numBytesMask[addressSize>>3]));
+	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(addressSize==16 ? 0xffff : 0xffffffff));
 	auto accessPtr=GetStackAccessPointer(mem,linearAddr,bytesToPop);
 	if(nullptr!=accessPtr)
 	{
@@ -606,16 +648,14 @@ unsigned int i486DXFidelityLayer <FIDELITY>::Pop32(Memory &mem)
 {
 	FIDELITY fidelity;
 
-	NUM_BYTES_MASK;
 	unsigned int value;
 	auto addressSize=GetStackAddressingSize();
 	auto &ESP=state.ESP();
 	const unsigned int bytesToPop=4;
 
-	class FIDELITY::SavedESP savedESP;
-	fidelity.SaveESP(savedESP,addressSize,ESP);
+	auto savedESP=fidelity.SaveESP(addressSize,ESP);
 
-	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(numBytesMask[addressSize>>3]));
+	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(addressSize==16 ? 0xffff : 0xffffffff));
 	auto accessPtr=GetStackAccessPointer(mem,linearAddr,bytesToPop);
 	if(nullptr!=accessPtr)
 	{
@@ -635,19 +675,17 @@ void i486DXFidelityLayer <FIDELITY>::Push(Memory &mem,unsigned int operandSize,u
 {
 	FIDELITY fidelity;
 
-	NUM_BYTES_MASK;
 	auto addressSize=GetStackAddressingSize();
 	auto &ESP=state.ESP();
 
-	class FIDELITY::SavedESP savedESP;
-	fidelity.SaveESP(savedESP,addressSize,ESP);
+	auto savedESP=fidelity.SaveESP(addressSize,ESP);
 
 	const unsigned int bytesToStore=(operandSize>>3)*2;
 	ESP-=bytesToStore;
 
 	fidelity.RestoreESPHighWord(addressSize,ESP,savedESP);
 
-	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(numBytesMask[addressSize>>3]));
+	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(addressSize==16 ? 0xffff : 0xffffffff));
 	auto accessPtr=GetStackAccessPointer(mem,linearAddr,bytesToStore);
 	if(nullptr!=accessPtr)
 	{
@@ -681,15 +719,13 @@ void i486DXFidelityLayer <FIDELITY>::Pop(uint32_t &firstPop,uint32_t &secondPop,
 {
 	FIDELITY fidelity;
 
-	NUM_BYTES_MASK;
 	auto addressSize=GetStackAddressingSize();
 	auto &ESP=state.ESP();
 	const unsigned int bytesToPop=(operandSize>>3)*2;
 
-	class FIDELITY::SavedESP savedESP;
-	fidelity.SaveESP(savedESP,addressSize,ESP);
+	auto savedESP=fidelity.SaveESP(addressSize,ESP);
 
-	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(numBytesMask[addressSize>>3]));
+	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(addressSize==16 ? 0xffff : 0xffffffff));
 	auto accessPtr=GetStackAccessPointer(mem,linearAddr,bytesToPop);
 	if(nullptr!=accessPtr)
 	{
@@ -728,19 +764,17 @@ void i486DXFidelityLayer <FIDELITY>::Push(Memory &mem,unsigned int operandSize,u
 {
 	FIDELITY fidelity;
 
-	NUM_BYTES_MASK;
 	auto addressSize=GetStackAddressingSize();
 	auto &ESP=state.ESP();
 
-	class FIDELITY::SavedESP savedESP;
-	fidelity.SaveESP(savedESP,addressSize,ESP);
+	auto savedESP=fidelity.SaveESP(addressSize,ESP);
 
 	const unsigned int bytesToStore=(operandSize>>3)*3;
 	ESP-=bytesToStore;
 
 	fidelity.RestoreESPHighWord(addressSize,ESP,savedESP);
 
-	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(numBytesMask[addressSize>>3]));
+	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(addressSize==16 ? 0xffff : 0xffffffff));
 	auto accessPtr=GetStackAccessPointer(mem,linearAddr,bytesToStore);
 	if(nullptr!=accessPtr)
 	{
@@ -778,15 +812,13 @@ void i486DXFidelityLayer <FIDELITY>::Pop(uint32_t &firstPop,uint32_t &secondPop,
 {
 	FIDELITY fidelity;
 
-	NUM_BYTES_MASK;
 	auto addressSize=GetStackAddressingSize();
 	auto &ESP=state.ESP();
 	const unsigned int bytesToPop=(operandSize>>3)*3;
 
-	class FIDELITY::SavedESP savedESP;
-	fidelity.SaveESP(savedESP,addressSize,ESP);
+	auto savedESP=fidelity.SaveESP(addressSize,ESP);
 
-	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(numBytesMask[addressSize>>3]));
+	unsigned int linearAddr=state.SS().baseLinearAddr+(ESP&(addressSize==16 ? 0xffff : 0xffffffff));
 	auto accessPtr=GetStackAccessPointer(mem,linearAddr,bytesToPop);
 	if(nullptr!=accessPtr)
 	{

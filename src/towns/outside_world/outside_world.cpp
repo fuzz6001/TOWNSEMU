@@ -1342,6 +1342,18 @@ void Outside_World::ProcessInkey(class FMTownsCommon &towns,int townsKey)
 void Outside_World::ProcessMouse(class FMTownsCommon &towns,int lb,int mb,int rb,int mx,int my)
 {
 	towns.SetMouseButtonState((0!=lb),(0!=rb));
+
+	{
+		int dx=lastMx-mx;
+		int dy=lastMy-my;
+		if(0!=dx || 0!=dy)
+		{
+			// std::cout << "Mouse Integration Active" << std::endl;
+			mouseIntegrationActive=true;
+			mouseStationaryCount=MOUSE_STATIONARY_COUNT;
+		}
+	}
+
 	if(true==mouseIntegrationActive)
 	{
 		int diffX,diffY;
@@ -1362,15 +1374,8 @@ void Outside_World::ProcessMouse(class FMTownsCommon &towns,int lb,int mb,int rb
 	}
 	else
 	{
-		int dx=lastMx-mx;
-		int dy=lastMy-my;
-		if(0!=dx || 0!=dy)
-		{
-			// std::cout << "Mouse Integration Active" << std::endl;
-			mouseIntegrationActive=true;
-			mouseStationaryCount=MOUSE_STATIONARY_COUNT;
-		}
 		towns.DontControlMouse();
+		towns.NotifyLastKnownHostMousePosition(mx,my); // At lesat notify where the pointer is.
 	}
 	lastMx=mx;
 	lastMy=my;
@@ -1379,11 +1384,26 @@ void Outside_World::ProcessMouse(class FMTownsCommon &towns,int lb,int mb,int rb
 void Outside_World::ProcessMouseDifferential(class FMTownsCommon &towns,int lb,int mb,int rb,int dx,int dy,int refX,int refY)
 {
 	towns.SetMouseButtonState((0!=lb),(0!=rb));
+
+	if(0!=dx || 0!=dy) // Removed Tolerance
+	// if(dx<-1 || 1<dx || dy<-1 || 1<dy)
+	{
+		// std::cout << "Mouse Integration Active" << std::endl;
+		mouseIntegrationActive=true;
+		mouseStationaryCount=MOUSE_STATIONARY_COUNT;
+	}
+
 	if(true==mouseIntegrationActive)
 	{
 		towns.ControlMouseByDiffDirect(dx,dy);
 
-		if(-1<=dx && dx<=1 && -1<=dy && dy<=1) // Added tolerance.
+		if(0==dx && 0==dy) // Removed Tolerance
+		// (-1<=dx && dx<=1 && -1<=dy && dy<=1) // Added tolerance.
+		// 2026/07/23
+		// I do not remembery why I thought it was a good idea to have a tolerance here.
+		// But, the tolerance prevented mouse cursor from moving while the user is moving the mouse slowly.
+		// DX and DY are coming from the host mouse, which is unlikely to give noise.
+		// Probably not having tolerance is not an issue.
 		{
 			--mouseStationaryCount;
 			if(mouseStationaryCount<=0)
@@ -1399,12 +1419,6 @@ void Outside_World::ProcessMouseDifferential(class FMTownsCommon &towns,int lb,i
 	}
 	else
 	{
-		if(dx<-1 || 1<dx || dy<-1 || 1<dy)
-		{
-			// std::cout << "Mouse Integration Active" << std::endl;
-			mouseIntegrationActive=true;
-			mouseStationaryCount=MOUSE_STATIONARY_COUNT;
-		}
 		towns.DontControlMouse();
 	}
 }
@@ -1413,17 +1427,17 @@ void Outside_World::ProcessAppSpecific(class FMTownsCommon &towns)
 {
 	if(TOWNS_APPSPECIFIC_WINGCOMMANDER1==towns.state.appSpecificSetting)
 	{
-		auto debugStop=towns.debugger.stop; // FetchWord may break due to MEMR.
+		auto debugStop=towns.CheckDebugBreak(); // FetchWord may break due to MEMR.
 		this->mouseByFlightstickCenterX=2*(int)towns.mem.FetchWord(towns.state.appSpecific_MousePtrX+4);
 		this->mouseByFlightstickCenterY=2*(int)towns.mem.FetchWord(towns.state.appSpecific_MousePtrY+4);
-		towns.debugger.stop=debugStop;
+		towns.SetDebugBreakFlag(debugStop);
 	}
 	else if(TOWNS_APPSPECIFIC_WINGCOMMANDER2==towns.state.appSpecificSetting)
 	{
-		auto debugStop=towns.debugger.stop; // FetchWord may break due to MEMR.
+		auto debugStop=towns.CheckDebugBreak(); // FetchWord may break due to MEMR.
 		this->mouseByFlightstickCenterX=2*(int)towns.mem.FetchWord(towns.state.appSpecific_MousePtrX+8);
 		this->mouseByFlightstickCenterY=2*(int)towns.mem.FetchWord(towns.state.appSpecific_MousePtrY+8);
-		towns.debugger.stop=debugStop;
+		towns.SetDebugBreakFlag(debugStop);
 	}
 }
 
@@ -1660,7 +1674,7 @@ bool Outside_World::WindowInterface::SendNewImage(class FMTownsCommon &towns,boo
 		shared.renderer.Prepare(towns.crtc);
 		shared.renderer.damperWireLine=towns.var.damperWireLine;
 		shared.renderer.scanLineEffectIn15KHz=towns.var.scanLineEffectIn15KHz;
-		memcpy(shared.VRAMCopy,towns.physMem.state.VRAM,towns.crtc.GetEffectiveVRAMSize());
+		memcpy(shared.VRAMCopy,towns.GetUsingVRAM(),towns.crtc.GetEffectiveVRAMSize());
 		shared.paletteCopy=towns.crtc.GetPalette();
 		shared.chaseHQPaletteCopy=towns.crtc.chaseHQPalette;
 		shared.imageNeedsFlip=imageNeedsFlip;

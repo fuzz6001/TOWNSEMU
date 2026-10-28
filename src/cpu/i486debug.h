@@ -134,9 +134,13 @@ public:
 
 	typedef i486DXCommon::FarPointer CS_EIP;
 
+	VMBase *vmPtr=nullptr;
+
 	std::map <CS_EIP,BreakPointInfo> breakPoints;
+	std::map <CS_EIP,BreakPointInfo> breakOnExceptionAt;
 	BreakPointInfo lastBreakPointInfo;
 	bool breakOnCS[65536];
+	uint32_t linearBreakPointRange[2]={0x7fffffff,0};
 	std::vector <bool> breakOnIORead,breakOnIOWrite;
 	CS_EIP oneTimeBreakPoint;
 	std::string externalBreakReason,additionalDisasm;
@@ -225,17 +229,23 @@ public:
 		std::set <uint64_t> CSEIP;
 	};
 	BreakOnINTCondition breakOnINT[BreakOnINTCondition::NUM_INTERRUPTS];
-	mutable bool stop;
 	bool monitorIO;
 	bool monitorIOports[65536];
 	bool disassembleEveryStep=false,regDumpEveryStep=false;;
 
+	bool powerOffOnIOW=false;
+	uint32_t powerOffOnIOWPort=~0;
+	uint32_t powerOffOnIOWValue=~0;
+
 	CS_EIP lastDisassembleAddr;
 
 
-	i486Debugger();
+	i486Debugger(VMBase *vm);
 	~i486Debugger();
 	void CleanUp(void);
+
+	void SetLinearBreakPointRange(uint32_t minLinAddr,uint32_t maxLinAddr);
+	void ClearLinearBreakPointRange(void);
 
 	void AddBreakPoint(CS_EIP bp,BreakPointInfo info);
 	void RemoveBreakPoint(CS_EIP bp);
@@ -369,6 +379,12 @@ public:
 	*/
 	void ClearBreakOnINT(void);
 	void ClearBreakOnINT(unsigned int INTNum);
+
+	/*! Break on exception at cs:eip.
+	*/
+	void BreakOnExceptionAt(i486DXCommon::FarPointer cseip);
+	void ClearBreakOnExceptionAt(i486DXCommon::FarPointer cseip);
+	void ClearBreakOnExceptionAt(void);
 
 	/*! Return formatted call-stack text.
 	*/

@@ -397,6 +397,7 @@ public:
 	};
 	enum
 	{
+		TSS_OFFSET_BACKLINK_TO_PREV_TSS=0x00,
 		TSS_OFFSET_ESP0=0x04,
 		TSS_OFFSET_SS0= 0x08,
 		TSS_OFFSET_ESP1=0x0C,
@@ -696,6 +697,8 @@ public:
 		unsigned int FUCOMP_STi(i486DXCommon& cpu, int i);
 		unsigned int FUCOMPP(i486DXCommon& cpu);
 		unsigned int FCOS(i486DXCommon &cpu);
+		unsigned int FICOM_m32int(i486DXCommon &cpu,const unsigned char byteData[]);
+		unsigned int FICOMP_m32int(i486DXCommon &cpu,const unsigned char byteData[]);
 		unsigned int FIDIV_m16int(i486DXCommon &cpu,const unsigned char byteData[]);
 		unsigned int FILD_m16int(i486DXCommon &cpu,const unsigned char byteData[]);
 		unsigned int FILD_m32int(i486DXCommon &cpu,const unsigned char byteData[]);
@@ -1161,6 +1164,12 @@ public:
 		EXCEPTION_SS,
 		EXCEPTION_PF,
 		EXCEPTION_LOCK_MAYBE,  // Raised tentatively in the High-Fidelity mode FetchOperandLoop when LOCK prefix is used.
+	};
+	enum
+	{
+		EXCEPTION_GP_FLAG_EXT=1,
+		EXCEPTION_GP_FLAG_IDT=2,
+		EXCEPTION_Gp_FLAG_TI=3,
 	};
 	enum
 	{
@@ -3062,6 +3071,17 @@ public:
 	bool REPCheckA16(unsigned int &clocksForRep,unsigned int instPrefix);
 	bool REPCheckA32(unsigned int &clocksForRep,unsigned int instPrefix);
 
+	/*!
+	*/
+	inline unsigned int REPCounterA16(void) const
+	{
+		return GetCX();
+	}
+	inline unsigned int REPCounterA32(void) const
+	{
+		return GetECX();
+	}
+
 	/*! Check for REPE or REPNE.
 	    It returns true if the operation should be continued to the next iteration.
 	    This check must be after performing a string operation because [1] pp.26-246
@@ -3468,8 +3488,17 @@ private:
 	/*! JMP FAR */
 	inline unsigned int JMPF(Memory &mem,uint16_t opSize,uint16_t instNumBytes,uint16_t newCS,uint32_t newEIP,uint16_t defClocks);
 
-	/*! Switch Task */
-	void SwitchTaskToTSS(Memory &mem,uint32_t instNumBytes,uint16_t prevCS,const SegmentRegister &newTSS,bool nested);
+	/*! Switch Task 1st Half 
+	    EFLAGS and CS may change before this function, so previous states of these registers must be preserved and given as parameters.
+	*/
+	void SaveStateToTSS(Memory &mem,uint32_t instNumBytes,uint32_t EFLAGS,uint16_t prevCS);
+
+	/*! Switch Task Last Half */
+	void SwitchTaskToTSS(Memory &mem,const SegmentRegister &newTSS,bool savePrevTR,uint16_t prevTR);
+
+public:
+	/*! Mark TR Busy/Available */
+	void MarkTaskRegisterBusy(Memory &mem,uint16_t selector,bool busy);
 
 	/*! */
 	inline void SwitchTaskToTSS();
@@ -3650,6 +3679,19 @@ public:
 		if(true==PagingEnabled())
 		{
 			physAddr=LinearAddressToPhysicalAddressRead(linearAddr,mem);
+
+			// This block is added to solve Windows 95 FTP crash.
+			// JMP destination had to raise Page Fault.  However, since it was returning
+			// ConstMemoryWindow for the physical address, FetchInstruction was reading
+			// a random location and caused a different exception.
+			// If Page Fault on Page Translation, it must return an empty ConstMemoryWindow.
+			FIDELITY fidelity;
+			if(true==fidelity.CheckExceptionInHighFidelityMode(*this))
+			{
+				MemoryAccess::ConstMemoryWindow memWin;
+				memWin.CleanUp();
+				return memWin;
+			}
 		}
 		auto memWin=mem.GetConstMemoryWindow(physAddr);
 		memWin.UpdateLinearBaseAddress(linearAddr);
